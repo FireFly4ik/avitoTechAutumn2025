@@ -3,6 +3,8 @@ package domain
 import "context"
 
 // AssignmentService - интерфейс бизнес-логики сервиса управления PR и командами
+//
+//go:generate mockery --name=AssignmentService --output=../mocks --outpkg=mocks --filename=assignment_service_mock.go
 type AssignmentService interface {
 	// CreatePullRequest создаёт новый pull request с автоматическим назначением ревьюверов
 	CreatePullRequest(ctx context.Context, input *CreatePullRequestInput) (*PullRequest, error)

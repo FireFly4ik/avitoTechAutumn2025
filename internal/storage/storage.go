@@ -7,6 +7,8 @@ import (
 )
 
 // TxManager управляет транзакциями базы данных
+//
+//go:generate mockery --name=TxManager --output=../mocks --outpkg=mocks --filename=tx_manager_mock.go
 type TxManager interface {
 	// Do выполняет функцию fn внутри транзакции
 	// Если fn возвращает ошибку, транзакция откатывается
@@ -15,6 +17,8 @@ type TxManager interface {
 }
 
 // Tx представляет транзакцию с доступом к репозиториям
+//
+//go:generate mockery --name=Tx --output=../mocks --outpkg=mocks --filename=tx_mock.go
 type Tx interface {
 	PullRequestRepo() PullRequestRepository
 	UserRepo() UserRepository
@@ -22,6 +26,8 @@ type Tx interface {
 }
 
 // PullRequestRepository определяет операции с pull requests
+//
+//go:generate mockery --name=PullRequestRepository --output=../mocks --outpkg=mocks --filename=pull_request_repository_mock.go
 type PullRequestRepository interface {
 	// Create создаёт новый pull request
 	Create(ctx context.Context, pr *domain.PullRequest) error
@@ -49,6 +55,8 @@ type PullRequestRepository interface {
 }
 
 // UserRepository определяет операции с пользователями
+//
+//go:generate mockery --name=UserRepository --output=../mocks --outpkg=mocks --filename=user_repository_mock.go
 type UserRepository interface {
 	// GetByID возвращает пользователя по ID
 	GetByID(ctx context.Context, userID string) (*domain.User, error)
@@ -64,6 +72,8 @@ type UserRepository interface {
 }
 
 // TeamRepository определяет операции с командами
+//
+//go:generate mockery --name=TeamRepository --output=../mocks --outpkg=mocks --filename=team_repository_mock.go
 type TeamRepository interface {
 	// Create создаёт команду и её участников (с upsert логикой)
 	Create(ctx context.Context, team *domain.Team, users []domain.User) error
