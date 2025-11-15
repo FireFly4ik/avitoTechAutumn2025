@@ -114,3 +114,17 @@ func (r *teamRepository) GetByName(ctx context.Context, teamName string) (*domai
 		Members: members,
 	}, nil
 }
+
+// DeactivateAllMembers деактивирует всех участников команды (batch update)
+func (r *teamRepository) DeactivateAllMembers(ctx context.Context, teamName string) (int, error) {
+	result := r.db.WithContext(ctx).
+		Model(&User{}).
+		Where("team_name = ? AND is_active = ?", teamName, true).
+		Update("is_active", false)
+
+	if result.Error != nil {
+		return 0, result.Error
+	}
+
+	return int(result.RowsAffected), nil
+}

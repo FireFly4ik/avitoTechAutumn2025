@@ -9,18 +9,20 @@ import (
 )
 
 const (
-	TeamPathRoute = "/team"
-	AddTeamRoute  = "/add"
-	GetTeamRoute  = "/get"
+	TeamPathRoute   = "/team"
+	AddTeamRoute    = "/add"
+	GetTeamRoute    = "/get"
+	DeactivateRoute = "/deactivate"
 
 	UserPathRoute    = "/users"
 	SetIsActiveRoute = "/setIsActive"
 	GetReviewRoute   = "/getReview"
 
-	PullRequestPathRoute     = "/pullRequest"
-	CreatePullRequestRoute   = "/create"
-	MergePullRequestRoute    = "/merge"
-	ReassignPullRequestRoute = "/reassign"
+	PullRequestPathRoute           = "/pullRequest"
+	CreatePullRequestRoute         = "/create"
+	MergePullRequestRoute          = "/merge"
+	ReassignPullRequestRoute       = "/reassign"
+	ReassignInactiveReviewersRoute = "/reassignInactive"
 )
 
 type Handler struct {
@@ -49,6 +51,7 @@ func (h *Handler) InitRoutes() *gin.Engine {
 	{
 		teamGroup.POST(AddTeamRoute, h.AddTeam)
 		teamGroup.GET(GetTeamRoute, middleware.RequireUser(), h.GetTeam)
+		teamGroup.POST(DeactivateRoute, middleware.RequireAdmin(), h.DeactivateTeam)
 	}
 
 	userGroup := r.Group(UserPathRoute)
@@ -62,6 +65,7 @@ func (h *Handler) InitRoutes() *gin.Engine {
 		prGroup.POST(CreatePullRequestRoute, middleware.RequireAdmin(), h.CreatePullRequest)
 		prGroup.POST(MergePullRequestRoute, middleware.RequireAdmin(), h.MergePullRequest)
 		prGroup.POST(ReassignPullRequestRoute, middleware.RequireAdmin(), h.ReassignPullRequest)
+		prGroup.POST(ReassignInactiveReviewersRoute, middleware.RequireAdmin(), h.ReassignInactiveReviewers)
 	}
 
 	return r

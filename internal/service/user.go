@@ -106,3 +106,58 @@ func (s *Service) GetReviewerAssignments(outerCtx context.Context, userID string
 
 	return prs, nil
 }
+
+// DeactivateTeamMembers массово деактивирует всех участников команды
+func (s *Service) DeactivateTeamMembers(outerCtx context.Context, input *domain.DeactivateTeamInput) (*domain.DeactivateTeamResult, error) {
+	const op = "service.DeactivateTeamMembers"
+	requestID := logger.GetRequestID(outerCtx)
+	var result *domain.DeactivateTeamResult
+
+	start := time.Now()
+	defer func() {
+		metrics.ServiceOperationDuration.WithLabelValues("deactivate_team_members").Observe(time.Since(start).Seconds())
+	}()
+
+	log.Info().
+		Str("request_id", requestID).
+		Str("layer", "service").
+		Str("team_name", input.TeamName).
+		Msg("deactivating all team members")
+
+	err := s.txmgr.Do(outerCtx, func(ctx context.Context, tx storage.Tx) error {
+		// Проверяем существование команды
+		_, err := tx.TeamRepo().GetByName(ctx, input.TeamName)
+		if err != nil {
+			return err
+		}
+
+		// Деактивируем всех участников команды одним batch update
+		deactivatedCount, err := tx.TeamRepo().DeactivateAllMembers(ctx, input.TeamName)
+		if err != nil {
+			return err
+		}
+
+		result = &domain.DeactivateTeamResult{
+			TeamName:             input.TeamName,
+			DeactivatedUserCount: deactivatedCount,
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, s.formatError(outerCtx, op, err)
+	}
+
+	// Обновляем метрики
+	metrics.UserActiveStatusChanged.WithLabelValues("inactive").Add(float64(result.DeactivatedUserCount))
+
+	log.Info().
+		Str("request_id", requestID).
+		Str("layer", "service").
+		Str("team_name", result.TeamName).
+		Int("deactivated_count", result.DeactivatedUserCount).
+		Msg("successfully deactivated all team members")
+
+	return result, nil
+}

@@ -13,11 +13,17 @@ type AssignmentService interface {
 	// ReassignPullRequest переназначает ревьювера на другого члена команды
 	ReassignPullRequest(ctx context.Context, input *ReassignPullRequestInput) (*ReassignPullRequestResult, error)
 
+	// ReassignInactiveReviewers переназначает всех неактивных ревьюверов на активных членов команды на определённом PR
+	ReassignInactiveReviewers(ctx context.Context, input *ReassignInactiveInput) (*ReassignInactiveResult, error)
+
 	// CreateTeam создаёт новую команду с участниками
 	CreateTeam(ctx context.Context, team *Team) (*Team, error)
 
 	// GetTeam возвращает информацию о команде по имени
 	GetTeam(ctx context.Context, teamName string) (*Team, error)
+
+	// DeactivateTeamMembers деактивирует всех пользователей в команде
+	DeactivateTeamMembers(ctx context.Context, input *DeactivateTeamInput) (*DeactivateTeamResult, error)
 
 	// SetUserIsActive изменяет статус активности пользователя
 	SetUserIsActive(ctx context.Context, userID string, isActive bool) (*User, error)

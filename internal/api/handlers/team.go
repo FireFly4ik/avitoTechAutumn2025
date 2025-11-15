@@ -110,3 +110,54 @@ func (h *Handler) GetTeam(c *gin.Context) {
 
 	c.JSON(http.StatusOK, mapTeamToAPI(team))
 }
+
+// DeactivateTeam обрабатывает массовую деактивацию всех участников команды
+func (h *Handler) DeactivateTeam(c *gin.Context) {
+	var req struct {
+		TeamName string `json:"team_name" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Error().
+			Err(err).
+			Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).
+			Str("layer", "handler").
+			Msg("failed to parse request")
+
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Error: api.Error{
+				Code:    api.ErrCodeInvalidRequest,
+				Message: "Failed to parse request: " + err.Error(),
+			},
+		})
+		return
+	}
+
+	log.Info().
+		Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).
+		Str("layer", "handler").
+		Str("team_name", req.TeamName).
+		Msg("deactivating team members")
+
+	input := &domain.DeactivateTeamInput{
+		TeamName: req.TeamName,
+	}
+
+	result, err := h.service.DeactivateTeamMembers(c.Request.Context(), input)
+	if err != nil {
+		handleDomainError(c, err)
+		return
+	}
+
+	log.Info().
+		Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).
+		Str("layer", "handler").
+		Str("team_name", result.TeamName).
+		Int("deactivated_count", result.DeactivatedUserCount).
+		Msg("successfully deactivated team members")
+
+	c.JSON(http.StatusOK, gin.H{
+		"team_name":              result.TeamName,
+		"deactivated_user_count": result.DeactivatedUserCount,
+	})
+}

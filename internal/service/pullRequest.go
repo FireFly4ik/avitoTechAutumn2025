@@ -313,3 +313,183 @@ func (s *Service) ReassignPullRequest(outerCtx context.Context, input *domain.Re
 
 	return result, nil
 }
+
+// ReassignInactiveReviewers переназначает всех неактивных ревьюверов PR
+func (s *Service) ReassignInactiveReviewers(outerCtx context.Context, input *domain.ReassignInactiveInput) (*domain.ReassignInactiveResult, error) {
+	const op = "service.ReassignInactiveReviewers"
+	requestID := logger.GetRequestID(outerCtx)
+	var result *domain.ReassignInactiveResult
+
+	start := time.Now()
+	defer func() {
+		metrics.ServiceOperationDuration.WithLabelValues("reassign_inactive_reviewers").Observe(time.Since(start).Seconds())
+	}()
+
+	log.Info().
+		Str("request_id", requestID).
+		Str("layer", "service").
+		Str("pull_request_id", input.PullRequestID).
+		Msg("reassigning all inactive reviewers")
+
+	err := s.txmgr.Do(outerCtx, func(ctx context.Context, tx storage.Tx) error {
+		// Получаем PR
+		pr, err := tx.PullRequestRepo().GetByID(ctx, input.PullRequestID)
+		if err != nil {
+			return err
+		}
+
+		// Запрещаем переназначение для уже смерженных PR
+		if pr.Status == domain.PullRequestStatusMerged {
+			return domain.ErrReassignOnMerged
+		}
+
+		// Получаем список неактивных ревьюверов
+		inactiveReviewers, err := tx.PullRequestRepo().GetInactiveReviewers(ctx, input.PullRequestID)
+		if err != nil {
+			return err
+		}
+
+		if len(inactiveReviewers) == 0 {
+			// Нет неактивных ревьюверов - возвращаем пустой результат
+			result = &domain.ReassignInactiveResult{
+				PullRequestID:       input.PullRequestID,
+				ReassignmentDetails: []domain.ReviewerReassignment{},
+			}
+			return nil
+		}
+
+		log.Info().
+			Str("request_id", requestID).
+			Str("pull_request_id", input.PullRequestID).
+			Int("inactive_count", len(inactiveReviewers)).
+			Any("inactive_reviewers", inactiveReviewers).
+			Msg("found inactive reviewers")
+
+		reassignments := make([]domain.ReviewerReassignment, 0, len(inactiveReviewers))
+
+		// Для каждого неактивного ревьювера пытаемся найти замену
+		for _, oldReviewerID := range inactiveReviewers {
+			// Получаем активных членов команды заменяемого ревьювера
+			activeUsers, err := tx.UserRepo().GetActiveTeamMembers(ctx, oldReviewerID)
+			if err != nil {
+				return err
+			}
+
+			// Формируем список кандидатов, исключая автора PR и текущих ревьюверов
+			excludeMap := make(map[string]bool)
+			excludeMap[pr.AuthorID] = true
+			for _, r := range pr.AssignedReviewers {
+				excludeMap[r] = true
+			}
+
+			candidates := make([]domain.User, 0)
+			for _, user := range activeUsers {
+				if !excludeMap[user.UserID] {
+					candidates = append(candidates, user)
+				}
+			}
+
+			if len(candidates) == 0 {
+				// Нет кандидатов - просто удаляем ревьювера
+				if err := tx.PullRequestRepo().UnassignReviewer(ctx, input.PullRequestID, oldReviewerID); err != nil {
+					return err
+				}
+
+				reassignments = append(reassignments, domain.ReviewerReassignment{
+					OldReviewerID: oldReviewerID,
+					NewReviewerID: "",
+					WasRemoved:    true,
+				})
+
+				// Удаляем из списка ревьюверов в памяти
+				newReviewers := make([]string, 0, len(pr.AssignedReviewers)-1)
+				for _, r := range pr.AssignedReviewers {
+					if r != oldReviewerID {
+						newReviewers = append(newReviewers, r)
+					}
+				}
+				pr.AssignedReviewers = newReviewers
+
+				log.Info().
+					Str("request_id", requestID).
+					Str("pull_request_id", input.PullRequestID).
+					Str("old_reviewer_id", oldReviewerID).
+					Msg("removed inactive reviewer (no candidates)")
+
+				continue
+			}
+
+			// Случайно выбираем нового ревьювера
+			index, err := secureRandomInt(len(candidates))
+			if err != nil {
+				return err
+			}
+			newReviewer := candidates[index].UserID
+
+			// Удаляем старого и назначаем нового
+			if err := tx.PullRequestRepo().UnassignReviewer(ctx, input.PullRequestID, oldReviewerID); err != nil {
+				return err
+			}
+
+			if err := tx.PullRequestRepo().AssignReviewer(ctx, input.PullRequestID, newReviewer); err != nil {
+				return err
+			}
+
+			reassignments = append(reassignments, domain.ReviewerReassignment{
+				OldReviewerID: oldReviewerID,
+				NewReviewerID: newReviewer,
+				WasRemoved:    false,
+			})
+
+			// Обновляем список ревьюверов в памяти
+			newReviewers := make([]string, 0, len(pr.AssignedReviewers))
+			for _, r := range pr.AssignedReviewers {
+				if r == oldReviewerID {
+					newReviewers = append(newReviewers, newReviewer)
+				} else {
+					newReviewers = append(newReviewers, r)
+				}
+			}
+			pr.AssignedReviewers = newReviewers
+
+			// Добавляем нового ревьювера в excludeMap для следующих итераций
+			excludeMap[newReviewer] = true
+
+			log.Info().
+				Str("request_id", requestID).
+				Str("pull_request_id", input.PullRequestID).
+				Str("old_reviewer_id", oldReviewerID).
+				Str("new_reviewer_id", newReviewer).
+				Msg("reassigned inactive reviewer")
+		}
+
+		result = &domain.ReassignInactiveResult{
+			PullRequestID:       input.PullRequestID,
+			ReassignmentDetails: reassignments,
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, s.formatError(outerCtx, op, err)
+	}
+
+	// Обновляем метрики
+	for _, detail := range result.ReassignmentDetails {
+		if detail.WasRemoved {
+			metrics.UserNoCandidatesErrors.Inc()
+		} else {
+			metrics.PRReassignedTotal.Inc()
+		}
+	}
+
+	log.Info().
+		Str("request_id", requestID).
+		Str("layer", "service").
+		Str("pull_request_id", result.PullRequestID).
+		Int("reassigned_count", len(result.ReassignmentDetails)).
+		Msg("successfully reassigned all inactive reviewers")
+
+	return result, nil
+}

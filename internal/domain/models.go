@@ -75,3 +75,32 @@ type ReassignPullRequestResult struct {
 	PullRequest PullRequest
 	ReplacedBy  string
 }
+
+// DeactivateTeamInput - входные данные для массовой деактивации команды
+type DeactivateTeamInput struct {
+	TeamName string
+}
+
+// DeactivateTeamResult - результат массовой деактивации команды
+type DeactivateTeamResult struct {
+	TeamName             string
+	DeactivatedUserCount int
+}
+
+// ReassignInactiveInput - входные данные для переназначения неактивных ревьюверов PR
+type ReassignInactiveInput struct {
+	PullRequestID string
+}
+
+// ReassignInactiveResult - результат переназначения неактивных ревьюверов
+type ReassignInactiveResult struct {
+	PullRequestID       string
+	ReassignmentDetails []ReviewerReassignment
+}
+
+// ReviewerReassignment - детали переназначения одного ревьювера
+type ReviewerReassignment struct {
+	OldReviewerID string
+	NewReviewerID string // пустая строка если не удалось найти замену
+	WasRemoved    bool   // true если ревьювер был просто удален без замены
+}

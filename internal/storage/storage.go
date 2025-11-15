@@ -43,6 +43,9 @@ type PullRequestRepository interface {
 
 	// GetPRsReviewedByUser возвращает список PR где пользователь является ревьювером
 	GetPRsReviewedByUser(ctx context.Context, userID string) ([]domain.PullRequestShort, error)
+
+	// GetInactiveReviewers возвращает список неактивных ревьюверов для данного PR
+	GetInactiveReviewers(ctx context.Context, prID string) ([]string, error)
 }
 
 // UserRepository определяет операции с пользователями
@@ -67,4 +70,7 @@ type TeamRepository interface {
 
 	// GetByName возвращает команду по имени с её участниками
 	GetByName(ctx context.Context, name string) (*domain.Team, error)
+
+	// DeactivateAllMembers деактивирует всех участников команды (batch update)
+	DeactivateAllMembers(ctx context.Context, teamName string) (int, error)
 }

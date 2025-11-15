@@ -508,3 +508,43 @@ func (r *pullRequestRepository) GetPRsReviewedByUser(ctx context.Context, userID
 
 	return prs, nil
 }
+
+// GetInactiveReviewers возвращает список неактивных ревьюверов для данного PR
+func (r *pullRequestRepository) GetInactiveReviewers(ctx context.Context, prID string) ([]string, error) {
+	requestID := logger.GetRequestID(ctx)
+
+	log.Info().
+		Str("request_id", requestID).
+		Str("layer", "storage").
+		Str("pull_request_id", prID).
+		Msg("fetching inactive reviewers for pull request")
+
+	var reviewerIDs []string
+
+	// JOIN с таблицей users чтобы найти неактивных ревьюверов
+	result := r.db.WithContext(ctx).
+		Table("pull_request_reviewers").
+		Select("pull_request_reviewers.reviewer_id").
+		Joins("JOIN users ON users.user_id = pull_request_reviewers.reviewer_id").
+		Where("pull_request_reviewers.pull_request_id = ? AND users.is_active = ?", prID, false).
+		Pluck("pull_request_reviewers.reviewer_id", &reviewerIDs)
+
+	if result.Error != nil {
+		log.Error().
+			Err(result.Error).
+			Str("request_id", requestID).
+			Str("layer", "storage").
+			Str("pull_request_id", prID).
+			Msg("error fetching inactive reviewers")
+		return nil, result.Error
+	}
+
+	log.Info().
+		Str("request_id", requestID).
+		Str("layer", "storage").
+		Str("pull_request_id", prID).
+		Int("inactive_count", len(reviewerIDs)).
+		Msg("successfully fetched inactive reviewers")
+
+	return reviewerIDs, nil
+}
