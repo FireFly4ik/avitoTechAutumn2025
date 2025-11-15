@@ -19,7 +19,7 @@ import (
 
 func setupTestRouter(mockService *mocks.AssignmentService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	os.Setenv("ADMIN_TOKEN", "test-admin-token")
+	_ = os.Setenv("ADMIN_TOKEN", "test-admin-token")
 	handler := handlers.NewHandler(mockService)
 	return handler.InitRoutes()
 }
@@ -61,7 +61,7 @@ func TestCreatePullRequestHandler_Success(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	pr := response["pr"].(map[string]interface{})
 	assert.Equal(t, "pr-001", pr["pull_request_id"])
@@ -94,7 +94,7 @@ func TestCreatePullRequestHandler_InvalidRequest(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	errorObj := response["error"].(map[string]interface{})
 	assert.Equal(t, "INVALID_REQUEST", errorObj["code"])
@@ -126,7 +126,7 @@ func TestCreatePullRequestHandler_DuplicatePR(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	errorObj := response["error"].(map[string]interface{})
 	assert.Equal(t, "PR_EXISTS", errorObj["code"])
@@ -165,7 +165,7 @@ func TestMergePullRequestHandler_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	pr := response["pr"].(map[string]interface{})
 	assert.Equal(t, "pr-001", pr["pull_request_id"])
@@ -211,7 +211,7 @@ func TestAddTeamHandler_Success(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	assert.Equal(t, "backend", response["team_name"])
 	members := response["members"].([]interface{})
@@ -246,7 +246,7 @@ func TestGetTeamHandler_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	assert.Equal(t, "backend", response["team_name"])
 	members := response["members"].([]interface{})
@@ -273,7 +273,7 @@ func TestGetTeamHandler_NotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	errorObj := response["error"].(map[string]interface{})
 	assert.Equal(t, "NOT_FOUND", errorObj["code"])
@@ -312,7 +312,7 @@ func TestSetUserIsActiveHandler_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	assert.Equal(t, "u1", response["user_id"])
 	assert.False(t, response["is_active"].(bool))
@@ -353,7 +353,7 @@ func TestGetReviewHandler_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	assert.Equal(t, "reviewer-1", response["user_id"])
 	prs := response["pull_requests"].([]interface{})

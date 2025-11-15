@@ -44,7 +44,7 @@ func TestCreateTeam_Success(t *testing.T) {
 					users[1].UserID == "u2"
 			})).Return(nil)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(nil) // Act
 	result, err := svc.CreateTeam(context.Background(), team)
 
@@ -81,7 +81,7 @@ func TestCreateTeam_AlreadyExists(t *testing.T) {
 			mockTeamRepo.On("Create", mock.Anything, team, mock.Anything).
 				Return(storage.ErrAlreadyExists)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(storage.ErrAlreadyExists) // Act
 	result, err := svc.CreateTeam(context.Background(), team)
 
@@ -117,7 +117,7 @@ func TestGetTeam_Success(t *testing.T) {
 			mockTeamRepo.On("GetByName", mock.Anything, "backend").
 				Return(expectedTeam, nil)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(nil)
 
 	// Act
@@ -152,7 +152,7 @@ func TestGetTeam_NotFound(t *testing.T) {
 			mockTeamRepo.On("GetByName", mock.Anything, "nonexistent").
 				Return(nil, storage.ErrNotFound)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(storage.ErrNotFound)
 
 	// Act
@@ -196,7 +196,7 @@ func TestDeactivateTeamMembers_Success(t *testing.T) {
 			mockTeamRepo.On("DeactivateAllMembers", mock.Anything, "backend").
 				Return(5, nil)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(nil) // Act
 	result, err := svc.DeactivateTeamMembers(context.Background(), input)
 

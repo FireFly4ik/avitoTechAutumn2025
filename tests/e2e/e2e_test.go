@@ -42,16 +42,16 @@ func TestMain(m *testing.M) {
 	})
 
 	// Используем тестовую БД (можно переопределить через ENV)
-	os.Setenv("DB_HOST", getEnv("TEST_DB_HOST", "localhost"))
-	os.Setenv("DB_PORT", getEnv("TEST_DB_PORT", "5436"))
-	os.Setenv("DB_NAME", getEnv("TEST_DB_NAME", "avito_test"))
-	os.Setenv("DB_USER", getEnv("TEST_DB_USER", "avito"))
-	os.Setenv("DB_PASSWORD", getEnv("TEST_DB_PASSWORD", "avito_password"))
-	os.Setenv("DB_SSLMODE", "disable")
-	os.Setenv("APP_PORT", "8081") // Другой порт для E2E тестов
-	os.Setenv("PRODUCTION_TYPE", "test")
-	os.Setenv("ADMIN_TOKEN", "admin-token-e2e")
-	os.Setenv("USER_TOKEN", "user-token-e2e")
+	_ = os.Setenv("DB_HOST", getEnv("TEST_DB_HOST", "localhost"))
+	_ = os.Setenv("DB_PORT", getEnv("TEST_DB_PORT", "5436"))
+	_ = os.Setenv("DB_NAME", getEnv("TEST_DB_NAME", "avito_test"))
+	_ = os.Setenv("DB_USER", getEnv("TEST_DB_USER", "avito"))
+	_ = os.Setenv("DB_PASSWORD", getEnv("TEST_DB_PASSWORD", "avito_password"))
+	_ = os.Setenv("DB_SSLMODE", "disable")
+	_ = os.Setenv("APP_PORT", "8081") // Другой порт для E2E тестов
+	_ = os.Setenv("PRODUCTION_TYPE", "test")
+	_ = os.Setenv("ADMIN_TOKEN", "admin-token-e2e")
+	_ = os.Setenv("USER_TOKEN", "user-token-e2e")
 
 	// Загружаем конфигурацию
 	cfg := config.NewEnvConfig()
@@ -236,7 +236,7 @@ func waitForServer(url string, maxAttempts int) error {
 	for i := 0; i < maxAttempts; i++ {
 		resp, err := http.Get(url + "/metrics")
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode == 200 {
 				return nil
 			}
@@ -285,7 +285,7 @@ func httpRequest(t *testing.T, method, path string, body interface{}, token stri
 func parseJSON(t *testing.T, resp *http.Response) map[string]interface{} {
 	t.Helper()
 
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 

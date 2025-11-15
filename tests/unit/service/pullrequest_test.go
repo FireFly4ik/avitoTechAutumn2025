@@ -62,7 +62,7 @@ func TestCreatePullRequest_Success(t *testing.T) {
 			mockPRRepo.On("AssignReviewer", mock.Anything, "pr-001", mock.AnythingOfType("string")).
 				Return(nil).Maybe()
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(nil)
 
 	// Act
@@ -116,7 +116,7 @@ func TestCreatePullRequest_NoActiveMembers(t *testing.T) {
 				return pr.ID == "pr-002" && len(pr.AssignedReviewers) == 0
 			})).Return(nil)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(nil)
 
 	// Act
@@ -159,7 +159,7 @@ func TestCreatePullRequest_AlreadyExists(t *testing.T) {
 			mockPRRepo.On("GetByID", mock.Anything, "pr-existing").
 				Return(existingPR, nil)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(storage.ErrAlreadyExists)
 
 	// Act
@@ -204,7 +204,7 @@ func TestMergePullRequest_Success(t *testing.T) {
 					pr.MergedAt != nil
 			})).Return(nil)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(nil)
 
 	// Act
@@ -247,7 +247,7 @@ func TestMergePullRequest_Idempotent(t *testing.T) {
 				Return(alreadyMergedPR, nil)
 
 			// Update НЕ должен вызываться
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(nil)
 
 	// Act
@@ -289,7 +289,7 @@ func TestReassignPullRequest_AfterMerge_ShouldFail(t *testing.T) {
 			mockPRRepo.On("GetByID", mock.Anything, "pr-001").
 				Return(mergedPR, nil)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(domain.ErrReassignOnMerged)
 
 	// Act

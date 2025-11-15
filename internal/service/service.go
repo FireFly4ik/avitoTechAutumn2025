@@ -31,9 +31,10 @@ func (s *Service) formatError(ctx context.Context, op string, err error) error {
 		return domain.ErrResourceNotFound
 	case errors.Is(err, storage.ErrAlreadyExists):
 		// Определяем тип ресурса по имени операции для точного сообщения об ошибке
-		if op == "service.CreatePullRequest" {
+		switch op {
+		case "service.CreatePullRequest":
 			return domain.ErrPRExists
-		} else if op == "service.CreateTeam" {
+		case "service.CreateTeam":
 			return domain.ErrTeamExists
 		}
 		return domain.ErrInternal

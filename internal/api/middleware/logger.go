@@ -9,8 +9,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type contextKey string
+
 const (
-	RequestIDKey string = "request_id"
+	RequestIDKey contextKey = "request_id"
 )
 
 func LoggerMiddleware() gin.HandlerFunc {

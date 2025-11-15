@@ -49,9 +49,9 @@ func (config *Config) PrintConfigWithHiddenSecrets() {
 		return strings.Repeat("*", len(s))
 	}
 
-	fmt.Println("========== Configuration ==========\n")
+	fmt.Println("========== Configuration ==========")
 
-	fmt.Println("App Configuration:")
+	fmt.Println("\nApp Configuration:")
 	fmt.Printf("\tPort: %s\n", config.Port)
 	fmt.Printf("\tProductionType: %s\n", config.ProductionType)
 	fmt.Printf("\tLogPath: %s\n", config.LogPath)

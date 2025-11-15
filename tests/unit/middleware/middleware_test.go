@@ -15,10 +15,10 @@ import (
 
 func TestAuthMiddleware_AdminToken(t *testing.T) {
 	// Arrange
-	os.Setenv("ADMIN_TOKEN", "test-admin-token")
-	os.Setenv("USER_TOKEN", "test-user-token")
-	defer os.Unsetenv("ADMIN_TOKEN")
-	defer os.Unsetenv("USER_TOKEN")
+	_ = os.Setenv("ADMIN_TOKEN", "test-admin-token")
+	_ = os.Setenv("USER_TOKEN", "test-user-token")
+	defer func() { _ = os.Unsetenv("ADMIN_TOKEN") }()
+	defer func() { _ = os.Unsetenv("USER_TOKEN") }()
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -41,10 +41,10 @@ func TestAuthMiddleware_AdminToken(t *testing.T) {
 
 func TestAuthMiddleware_UserToken(t *testing.T) {
 	// Arrange
-	os.Setenv("ADMIN_TOKEN", "test-admin-token")
-	os.Setenv("USER_TOKEN", "test-user-token")
-	defer os.Unsetenv("ADMIN_TOKEN")
-	defer os.Unsetenv("USER_TOKEN")
+	_ = os.Setenv("ADMIN_TOKEN", "test-admin-token")
+	_ = os.Setenv("USER_TOKEN", "test-user-token")
+	defer func() { _ = os.Unsetenv("ADMIN_TOKEN") }()
+	defer func() { _ = os.Unsetenv("USER_TOKEN") }()
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -67,10 +67,10 @@ func TestAuthMiddleware_UserToken(t *testing.T) {
 
 func TestAuthMiddleware_AdminTokenForUserEndpoint(t *testing.T) {
 	// Arrange
-	os.Setenv("ADMIN_TOKEN", "test-admin-token")
-	os.Setenv("USER_TOKEN", "test-user-token")
-	defer os.Unsetenv("ADMIN_TOKEN")
-	defer os.Unsetenv("USER_TOKEN")
+	_ = os.Setenv("ADMIN_TOKEN", "test-admin-token")
+	_ = os.Setenv("USER_TOKEN", "test-user-token")
+	defer func() { _ = os.Unsetenv("ADMIN_TOKEN") }()
+	defer func() { _ = os.Unsetenv("USER_TOKEN") }()
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -93,10 +93,10 @@ func TestAuthMiddleware_AdminTokenForUserEndpoint(t *testing.T) {
 
 func TestAuthMiddleware_UserTokenForAdminEndpoint_Forbidden(t *testing.T) {
 	// Arrange
-	os.Setenv("ADMIN_TOKEN", "test-admin-token")
-	os.Setenv("USER_TOKEN", "test-user-token")
-	defer os.Unsetenv("ADMIN_TOKEN")
-	defer os.Unsetenv("USER_TOKEN")
+	_ = os.Setenv("ADMIN_TOKEN", "test-admin-token")
+	_ = os.Setenv("USER_TOKEN", "test-user-token")
+	defer func() { _ = os.Unsetenv("ADMIN_TOKEN") }()
+	defer func() { _ = os.Unsetenv("USER_TOKEN") }()
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -118,8 +118,8 @@ func TestAuthMiddleware_UserTokenForAdminEndpoint_Forbidden(t *testing.T) {
 
 func TestAuthMiddleware_MissingToken(t *testing.T) {
 	// Arrange
-	os.Setenv("ADMIN_TOKEN", "test-admin-token")
-	defer os.Unsetenv("ADMIN_TOKEN")
+	_ = os.Setenv("ADMIN_TOKEN", "test-admin-token")
+	defer func() { _ = os.Unsetenv("ADMIN_TOKEN") }()
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -140,10 +140,10 @@ func TestAuthMiddleware_MissingToken(t *testing.T) {
 
 func TestAuthMiddleware_InvalidToken(t *testing.T) {
 	// Arrange
-	os.Setenv("ADMIN_TOKEN", "test-admin-token")
-	os.Setenv("USER_TOKEN", "test-user-token")
-	defer os.Unsetenv("ADMIN_TOKEN")
-	defer os.Unsetenv("USER_TOKEN")
+	_ = os.Setenv("ADMIN_TOKEN", "test-admin-token")
+	_ = os.Setenv("USER_TOKEN", "test-user-token")
+	defer func() { _ = os.Unsetenv("ADMIN_TOKEN") }()
+	defer func() { _ = os.Unsetenv("USER_TOKEN") }()
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -165,8 +165,8 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 
 func TestAuthMiddleware_InvalidAuthorizationFormat(t *testing.T) {
 	// Arrange
-	os.Setenv("ADMIN_TOKEN", "test-admin-token")
-	defer os.Unsetenv("ADMIN_TOKEN")
+	_ = os.Setenv("ADMIN_TOKEN", "test-admin-token")
+	defer func() { _ = os.Unsetenv("ADMIN_TOKEN") }()
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

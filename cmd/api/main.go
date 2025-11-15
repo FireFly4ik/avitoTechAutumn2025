@@ -44,10 +44,8 @@ func main() {
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	select {
-	case s := <-sig:
-		log.Info().Msg(fmt.Sprintf("signal received: %s — starting graceful shutdown", s))
-	}
+	s := <-sig
+	log.Info().Msg(fmt.Sprintf("signal received: %s — starting graceful shutdown", s))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

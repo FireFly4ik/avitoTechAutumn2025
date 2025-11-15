@@ -45,7 +45,7 @@ func TestSetUserIsActive_Activate(t *testing.T) {
 				return user.UserID == "user-1" && user.IsActive == true
 			})).Return(nil)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(nil)
 
 	// Act
@@ -87,7 +87,7 @@ func TestSetUserIsActive_Deactivate(t *testing.T) {
 				return user.UserID == "user-1" && user.IsActive == false
 			})).Return(nil)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(nil)
 
 	// Act
@@ -119,7 +119,7 @@ func TestSetUserIsActive_UserNotFound(t *testing.T) {
 			mockUserRepo.On("GetByID", mock.Anything, "nonexistent").
 				Return(nil, storage.ErrNotFound)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(storage.ErrNotFound)
 
 	// Act
@@ -162,7 +162,7 @@ func TestSetUserIsActive_Idempotent(t *testing.T) {
 				return user.UserID == "user-1" && user.IsActive == true
 			})).Return(nil)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(nil)
 
 	// Act - Активируем уже активного пользователя
@@ -207,7 +207,7 @@ func TestGetReviewerAssignments_Success(t *testing.T) {
 			mockPRRepo.On("GetPRsReviewedByUser", mock.Anything, "reviewer-1").
 				Return(expectedPRs, nil)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(nil)
 
 	// Act
@@ -240,7 +240,7 @@ func TestGetReviewerAssignments_EmptyList(t *testing.T) {
 			mockPRRepo.On("GetPRsReviewedByUser", mock.Anything, "user-without-prs").
 				Return([]domain.PullRequestShort{}, nil)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(nil)
 
 	// Act
@@ -285,7 +285,7 @@ func TestGetReviewerAssignments_IncludesMergedPRs(t *testing.T) {
 			mockPRRepo.On("GetPRsReviewedByUser", mock.Anything, "reviewer-1").
 				Return(expectedPRs, nil)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(nil)
 
 	// Act
@@ -336,7 +336,7 @@ func TestDeactivateTeamMembers_WithOpenPRs(t *testing.T) {
 			mockTeamRepo.On("DeactivateAllMembers", mock.Anything, "backend").
 				Return(3, nil)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(nil) // Act
 	result, err := svc.DeactivateTeamMembers(context.Background(), input)
 
@@ -370,7 +370,7 @@ func TestDeactivateTeamMembers_TeamNotFound(t *testing.T) {
 			mockTeamRepo.On("GetByName", mock.Anything, "nonexistent").
 				Return(nil, storage.ErrNotFound)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(storage.ErrNotFound) // Act
 	result, err := svc.DeactivateTeamMembers(context.Background(), input)
 
@@ -411,7 +411,7 @@ func TestDeactivateTeamMembers_AlreadyAllInactive(t *testing.T) {
 			mockTeamRepo.On("DeactivateAllMembers", mock.Anything, "inactive-team").
 				Return(0, nil)
 
-			fn(context.Background(), mockTx)
+			_ = fn(context.Background(), mockTx)
 		}).Return(nil) // Act
 	result, err := svc.DeactivateTeamMembers(context.Background(), input)
 

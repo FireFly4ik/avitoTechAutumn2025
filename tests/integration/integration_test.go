@@ -40,16 +40,16 @@ func TestMain(m *testing.M) {
 	})
 
 	// Используем тестовую БД (можно переопределить через ENV)
-	os.Setenv("DB_HOST", getEnv("TEST_DB_HOST", "localhost"))
-	os.Setenv("DB_PORT", getEnv("TEST_DB_PORT", "5436"))
-	os.Setenv("DB_NAME", getEnv("TEST_DB_NAME", "avito_test"))
-	os.Setenv("DB_USER", getEnv("TEST_DB_USER", "avito"))
-	os.Setenv("DB_PASSWORD", getEnv("TEST_DB_PASSWORD", "avito_password"))
-	os.Setenv("DB_SSLMODE", "disable")
-	os.Setenv("PORT", "8080")
-	os.Setenv("PRODUCTION_TYPE", "test")
-	os.Setenv("ADMIN_TOKEN", "admin")
-	os.Setenv("USER_TOKEN", "user")
+	_ = os.Setenv("DB_HOST", getEnv("TEST_DB_HOST", "localhost"))
+	_ = os.Setenv("DB_PORT", getEnv("TEST_DB_PORT", "5436"))
+	_ = os.Setenv("DB_NAME", getEnv("TEST_DB_NAME", "avito_test"))
+	_ = os.Setenv("DB_USER", getEnv("TEST_DB_USER", "avito"))
+	_ = os.Setenv("DB_PASSWORD", getEnv("TEST_DB_PASSWORD", "avito_password"))
+	_ = os.Setenv("DB_SSLMODE", "disable")
+	_ = os.Setenv("PORT", "8080")
+	_ = os.Setenv("PRODUCTION_TYPE", "test")
+	_ = os.Setenv("ADMIN_TOKEN", "admin")
+	_ = os.Setenv("USER_TOKEN", "user")
 
 	// Загружаем конфигурацию
 	cfg := config.NewEnvConfig()
@@ -290,7 +290,7 @@ func TestTeamAdd_CreateNew(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	assert.Equal(t, "backend", response["team_name"])
 
@@ -409,7 +409,7 @@ func TestTeamAdd_Duplicate(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w2.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w2.Body.Bytes(), &response)
+	_ = json.Unmarshal(w2.Body.Bytes(), &response)
 	errorObj := response["error"].(map[string]interface{})
 	assert.Equal(t, "TEAM_EXISTS", errorObj["code"])
 }
@@ -449,7 +449,7 @@ func TestTeamDeactivate_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	assert.Equal(t, "backend", response["team_name"])
 	assert.Equal(t, float64(5), response["deactivated_user_count"])
@@ -496,7 +496,7 @@ func TestTeamDeactivate_PartiallyInactive(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	// Должно быть деактивировано только 2 (которые были активны)
 	assert.Equal(t, float64(2), response["deactivated_user_count"])
@@ -519,7 +519,7 @@ func TestTeamGet_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var team map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &team)
+	_ = json.Unmarshal(w.Body.Bytes(), &team)
 
 	assert.Equal(t, "backend", team["team_name"])
 	members := team["members"].([]interface{})
@@ -539,7 +539,7 @@ func TestTeamGet_NotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 	errorObj := response["error"].(map[string]interface{})
 	assert.Equal(t, "NOT_FOUND", errorObj["code"])
 }
@@ -569,7 +569,7 @@ func TestUserSetIsActive_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	assert.Equal(t, userID, response["user_id"])
 	assert.False(t, response["is_active"].(bool))
@@ -596,7 +596,7 @@ func TestUserGetReview_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	assert.Equal(t, reviewerID, response["user_id"])
 
@@ -677,7 +677,7 @@ func TestPullRequestCreate_NoReviewers(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	pr := response["pr"].(map[string]interface{})
 	reviewers := pr["assigned_reviewers"].([]interface{})
@@ -723,7 +723,7 @@ func TestPullRequestCreate_OnlyActiveReviewers(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	pr := response["pr"].(map[string]interface{})
 	reviewers := pr["assigned_reviewers"].([]interface{})
@@ -765,7 +765,7 @@ func TestPullRequestCreate_Duplicate(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, w2.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w2.Body.Bytes(), &response)
+	_ = json.Unmarshal(w2.Body.Bytes(), &response)
 	errorObj := response["error"].(map[string]interface{})
 	assert.Equal(t, "PR_EXISTS", errorObj["code"])
 }
@@ -793,7 +793,7 @@ func TestPullRequestMerge_Idempotent(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w1.Code)
 
 	var response1 map[string]interface{}
-	json.Unmarshal(w1.Body.Bytes(), &response1)
+	_ = json.Unmarshal(w1.Body.Bytes(), &response1)
 	pr1 := response1["pr"].(map[string]interface{})
 	assert.Equal(t, "MERGED", pr1["status"])
 	assert.NotNil(t, pr1["merged_at"], "merged_at должен быть установлен после merge")
@@ -808,7 +808,7 @@ func TestPullRequestMerge_Idempotent(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w2.Code, "Merge должен быть идемпотентным")
 
 	var response2 map[string]interface{}
-	json.Unmarshal(w2.Body.Bytes(), &response2)
+	_ = json.Unmarshal(w2.Body.Bytes(), &response2)
 	pr2 := response2["pr"].(map[string]interface{})
 	assert.Equal(t, "MERGED", pr2["status"])
 
@@ -846,7 +846,7 @@ func TestPullRequestReassign_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	newReviewerID := response["replaced_by"].(string)
 	assert.NotEmpty(t, newReviewerID)
@@ -885,7 +885,7 @@ func TestPullRequestReassign_AfterMerge(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 	errorObj := response["error"].(map[string]interface{})
 	assert.Equal(t, "PR_MERGED", errorObj["code"])
 }
@@ -936,7 +936,7 @@ func TestPullRequestReassign_NotAssigned(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 	errorObj := response["error"].(map[string]interface{})
 	assert.Equal(t, "NOT_ASSIGNED", errorObj["code"])
 }
@@ -996,7 +996,7 @@ func TestReassignInactive_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	details := response["reassignment_details"].([]interface{})
 	assert.NotEmpty(t, details, "Должны быть детали переназначения")
@@ -1042,7 +1042,7 @@ func TestReassignInactive_NoInactive(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	details := response["reassignment_details"].([]interface{})
 	assert.Empty(t, details, "Не должно быть переназначений")
@@ -1078,7 +1078,7 @@ func TestReassignInactive_AfterMerge(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 	errorObj := response["error"].(map[string]interface{})
 	assert.Equal(t, "PR_MERGED", errorObj["code"])
 }
@@ -1131,7 +1131,7 @@ func TestReassignInactive_RemovesWhenNoCandidates(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
 
 	details := response["reassignment_details"].([]interface{})
 	require.Equal(t, 1, len(details))
