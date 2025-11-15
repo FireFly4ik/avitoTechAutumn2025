@@ -3,8 +3,11 @@ package service
 import (
 	"avitoTechAutumn2025/internal/domain"
 	"avitoTechAutumn2025/internal/logger"
+	"avitoTechAutumn2025/internal/metrics"
 	"avitoTechAutumn2025/internal/storage"
 	"context"
+	"time"
+
 	"github.com/rs/zerolog/log"
 )
 
@@ -13,6 +16,11 @@ func (s *Service) SetUserIsActive(outerCtx context.Context, userID string, isAct
 	const op = "service.SetUserIsActive"
 	requestID := logger.GetRequestID(outerCtx)
 	var user *domain.User
+
+	start := time.Now()
+	defer func() {
+		metrics.ServiceOperationDuration.WithLabelValues("set_user_active").Observe(time.Since(start).Seconds())
+	}()
 
 	log.Info().
 		Str("request_id", requestID).
@@ -40,6 +48,13 @@ func (s *Service) SetUserIsActive(outerCtx context.Context, userID string, isAct
 		return nil, s.formatError(outerCtx, op, err)
 	}
 
+	// Обновляем метрики статуса пользователя
+	status := "inactive"
+	if user.IsActive {
+		status = "active"
+	}
+	metrics.UserActiveStatusChanged.WithLabelValues(status).Inc()
+
 	log.Info().
 		Str("request_id", requestID).
 		Str("layer", "service").
@@ -55,6 +70,11 @@ func (s *Service) GetReviewerAssignments(outerCtx context.Context, userID string
 	const op = "service.GetReviewerAssignments"
 	requestID := logger.GetRequestID(outerCtx)
 	var prs []domain.PullRequestShort
+
+	start := time.Now()
+	defer func() {
+		metrics.ServiceOperationDuration.WithLabelValues("get_reviewer_assignments").Observe(time.Since(start).Seconds())
+	}()
 
 	log.Info().
 		Str("request_id", requestID).
@@ -74,6 +94,8 @@ func (s *Service) GetReviewerAssignments(outerCtx context.Context, userID string
 	if err != nil {
 		return nil, s.formatError(outerCtx, op, err)
 	}
+
+	// Метрику количества назначений обновляет reconcile-горутина автоматически
 
 	log.Info().
 		Str("request_id", requestID).

@@ -44,7 +44,9 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 	result := r.db.WithContext(ctx).
 		Model(&User{}).
 		Where("user_id = ?", user.UserID).
-		Update("is_active", user.IsActive)
+		Updates(map[string]interface{}{
+			"is_active": user.IsActive,
+		})
 
 	if result.Error != nil {
 		return result.Error
@@ -104,19 +106,13 @@ func (r *userRepository) GetActiveTeamMembers(ctx context.Context, userID string
 
 // CreateBatch создаёт несколько пользователей
 func (r *userRepository) CreateBatch(ctx context.Context, users []domain.User) error {
-	dbUsers := make([]User, len(users))
-	for i, user := range users {
-		dbUsers[i] = User{
-			UserID:   user.UserID,
-			Username: user.Username,
-			TeamName: user.TeamName,
-			IsActive: user.IsActive,
+	for _, user := range users {
+		if err := r.db.WithContext(ctx).Exec(
+			"INSERT INTO users (user_id, username, team_name, is_active) VALUES (?, ?, ?, ?)",
+			user.UserID, user.Username, user.TeamName, user.IsActive,
+		).Error; err != nil {
+			return err
 		}
-	}
-
-	result := r.db.WithContext(ctx).Create(&dbUsers)
-	if result.Error != nil {
-		return result.Error
 	}
 
 	return nil

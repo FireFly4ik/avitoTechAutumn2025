@@ -3,7 +3,9 @@ package handlers
 import (
 	"avitoTechAutumn2025/internal/api/middleware"
 	"avitoTechAutumn2025/internal/domain"
+
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -34,10 +36,14 @@ func (h *Handler) InitRoutes() *gin.Engine {
 
 	r.Use(
 		middleware.LoggerMiddleware(),
+		middleware.MetricsMiddleware(),
 		middleware.RecoveryMiddleware(),
 		middleware.CORSMiddleware(),
 		middleware.AuthMiddleware(),
 	)
+
+	// Prometheus metrics endpoint (без аутентификации для scraping)
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	teamGroup := r.Group(TeamPathRoute)
 	{

@@ -15,6 +15,12 @@ const (
 
 func LoggerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Skip logging for /metrics endpoint
+		if c.Request.URL.Path == "/metrics" {
+			c.Next()
+			return
+		}
+
 		requestID := uuid.New().String()
 
 		c.Set(RequestIDKey, requestID)

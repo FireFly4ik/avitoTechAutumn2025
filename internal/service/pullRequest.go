@@ -3,13 +3,15 @@ package service
 import (
 	"avitoTechAutumn2025/internal/domain"
 	"avitoTechAutumn2025/internal/logger"
+	"avitoTechAutumn2025/internal/metrics"
 	"avitoTechAutumn2025/internal/storage"
 	"context"
 	"crypto/rand"
 	"errors"
 	"math/big"
-	"github.com/rs/zerolog/log"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 // secureRandomInt возвращает криптографически безопасное случайное число от 0 до max-1
@@ -26,6 +28,12 @@ func (s *Service) CreatePullRequest(outerCtx context.Context, input *domain.Crea
 	const op = "service.CreatePullRequest"
 	requestID := logger.GetRequestID(outerCtx)
 	var pr *domain.PullRequest
+
+	start := time.Now()
+	defer func() {
+		metrics.ServiceOperationDuration.WithLabelValues("create_pull_request").Observe(time.Since(start).Seconds())
+		metrics.PRCreationDuration.Observe(time.Since(start).Seconds())
+	}()
 
 	log.Info().
 		Str("request_id", requestID).
@@ -52,6 +60,7 @@ func (s *Service) CreatePullRequest(outerCtx context.Context, input *domain.Crea
 		// Выбираем до 2 случайных ревьюверов из доступных
 		reviewers := make([]string, 0, 2)
 		lenActive := len(activeUsers)
+		selectionStart := time.Now()
 		for i := 0; i < min(2, lenActive); i++ {
 			index, err := secureRandomInt(len(activeUsers))
 			if err != nil {
@@ -61,6 +70,8 @@ func (s *Service) CreatePullRequest(outerCtx context.Context, input *domain.Crea
 			activeUsers = append(activeUsers[:index], activeUsers[index+1:]...)
 			reviewers = append(reviewers, userID)
 		}
+		metrics.RandomReviewerSelectionDuration.Observe(time.Since(selectionStart).Seconds())
+		metrics.PRReviewersAssigned.Observe(float64(len(reviewers)))
 
 		log.Info().
 			Str("request_id", requestID).
@@ -104,6 +115,10 @@ func (s *Service) CreatePullRequest(outerCtx context.Context, input *domain.Crea
 		return nil, s.formatError(outerCtx, op, err)
 	}
 
+	// Увеличиваем счетчики метрик
+	metrics.PRCreatedTotal.Inc()
+	metrics.PROpenCount.Inc()
+
 	return pr, nil
 }
 
@@ -112,6 +127,12 @@ func (s *Service) MergePullRequest(outerCtx context.Context, input *domain.Merge
 	const op = "service.MergePullRequest"
 	requestID := logger.GetRequestID(outerCtx)
 	var pr *domain.PullRequest
+
+	start := time.Now()
+	defer func() {
+		metrics.ServiceOperationDuration.WithLabelValues("merge_pull_request").Observe(time.Since(start).Seconds())
+		metrics.PRMergeDuration.Observe(time.Since(start).Seconds())
+	}()
 
 	log.Info().
 		Str("request_id", requestID).
@@ -153,6 +174,10 @@ func (s *Service) MergePullRequest(outerCtx context.Context, input *domain.Merge
 		return nil, s.formatError(outerCtx, op, err)
 	}
 
+	// Увеличиваем счетчики метрик
+	metrics.PRMergedTotal.Inc()
+	metrics.PROpenCount.Dec()
+
 	log.Info().
 		Str("request_id", requestID).
 		Str("layer", "service").
@@ -168,6 +193,11 @@ func (s *Service) ReassignPullRequest(outerCtx context.Context, input *domain.Re
 	const op = "service.ReassignPullRequest"
 	requestID := logger.GetRequestID(outerCtx)
 	var result *domain.ReassignPullRequestResult
+
+	start := time.Now()
+	defer func() {
+		metrics.ServiceOperationDuration.WithLabelValues("reassign_pull_request").Observe(time.Since(start).Seconds())
+	}()
 
 	log.Info().
 		Str("request_id", requestID).
@@ -220,6 +250,7 @@ func (s *Service) ReassignPullRequest(outerCtx context.Context, input *domain.Re
 		}
 
 		if len(candidates) == 0 {
+			metrics.UserNoCandidatesErrors.Inc()
 			return domain.ErrNoCandidate
 		}
 
@@ -268,6 +299,9 @@ func (s *Service) ReassignPullRequest(outerCtx context.Context, input *domain.Re
 	if err != nil {
 		return nil, s.formatError(outerCtx, op, err)
 	}
+
+	// Увеличиваем счетчик переназначений
+	metrics.PRReassignedTotal.Inc()
 
 	log.Info().
 		Str("request_id", requestID).

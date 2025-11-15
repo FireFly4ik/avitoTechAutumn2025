@@ -3,8 +3,11 @@ package service
 import (
 	"avitoTechAutumn2025/internal/domain"
 	"avitoTechAutumn2025/internal/logger"
+	"avitoTechAutumn2025/internal/metrics"
 	"avitoTechAutumn2025/internal/storage"
 	"context"
+	"time"
+
 	"github.com/rs/zerolog/log"
 )
 
@@ -12,6 +15,11 @@ import (
 func (s *Service) CreateTeam(outerCtx context.Context, team *domain.Team) (*domain.Team, error) {
 	const op = "service.CreateTeam"
 	requestID := logger.GetRequestID(outerCtx)
+
+	start := time.Now()
+	defer func() {
+		metrics.ServiceOperationDuration.WithLabelValues("create_team").Observe(time.Since(start).Seconds())
+	}()
 
 	log.Info().
 		Str("request_id", requestID).
@@ -39,6 +47,9 @@ func (s *Service) CreateTeam(outerCtx context.Context, team *domain.Team) (*doma
 		return nil, s.formatError(outerCtx, op, err)
 	}
 
+	// Обновляем метрики команды (только счётчик создания, остальное обновит reconcile-горутина)
+	metrics.TeamCreatedTotal.Inc()
+
 	log.Info().
 		Str("request_id", requestID).
 		Str("layer", "service").
@@ -54,6 +65,11 @@ func (s *Service) GetTeam(outerCtx context.Context, teamName string) (*domain.Te
 	const op = "service.GetTeam"
 	requestID := logger.GetRequestID(outerCtx)
 	var team *domain.Team
+
+	start := time.Now()
+	defer func() {
+		metrics.ServiceOperationDuration.WithLabelValues("get_team").Observe(time.Since(start).Seconds())
+	}()
 
 	log.Info().
 		Str("request_id", requestID).

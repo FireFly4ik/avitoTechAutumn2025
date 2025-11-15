@@ -6,7 +6,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
 	"avitoTechAutumn2025/internal/domain"
 	"avitoTechAutumn2025/internal/storage"
@@ -37,26 +36,35 @@ func (r *teamRepository) Create(ctx context.Context, team *domain.Team, users []
 		return result.Error
 	}
 
-	// Добавляем участников команды с upsert - обновляем при конфликте
+	// Добавляем участников команды - создаём или обновляем каждого отдельно
 	if len(users) > 0 {
-		dbUsers := make([]User, len(users))
-		for i, user := range users {
-			dbUsers[i] = User{
-				UserID:   user.UserID,
-				Username: user.Username,
-				TeamName: team.Name,
-				IsActive: user.IsActive,
+		for _, user := range users {
+			// Пытаемся найти существующего пользователя
+			var existingUser User
+			err := r.db.WithContext(ctx).Where("user_id = ?", user.UserID).First(&existingUser).Error
+
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					// Пользователь не существует - создаём нового через raw SQL
+					if err := r.db.WithContext(ctx).Exec(
+						"INSERT INTO users (user_id, username, team_name, is_active) VALUES (?, ?, ?, ?)",
+						user.UserID, user.Username, team.Name, user.IsActive,
+					).Error; err != nil {
+						return err
+					}
+				} else {
+					return err
+				}
+			} else {
+				// Пользователь существует - обновляем все поля явно
+				if err := r.db.WithContext(ctx).Model(&existingUser).Updates(map[string]interface{}{
+					"username":  user.Username,
+					"team_name": team.Name,
+					"is_active": user.IsActive,
+				}).Error; err != nil {
+					return err
+				}
 			}
-		}
-
-		// Используем ON CONFLICT для upsert
-		result = r.db.WithContext(ctx).Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "user_id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"username", "is_active", "team_name"}),
-		}).Create(&dbUsers)
-
-		if result.Error != nil {
-			return result.Error
 		}
 	}
 
