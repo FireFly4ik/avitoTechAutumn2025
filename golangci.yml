@@ -1,0 +1,174 @@
+run:
+  timeout: 5m
+  tests: true
+
+output:
+  formats:
+    - format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    - gofmt
+    - goimports
+    - misspell
+
+    - stylecheck
+
+    - gocognit
+    - cyclop
+    - funlen
+    - nestif
+
+    - gosec
+    - bodyclose
+    - exportloopref
+
+    - rowserrcheck
+    - sqlclosecheck
+
+    - contextcheck
+    - noctx
+
+    - errorlint
+    - wrapcheck
+    - goerr113
+
+    - prealloc
+
+    - gocritic
+    - goprintffuncname
+    - nolintlint
+    - dupl
+    - predeclared
+
+  disable:
+    - typecheck
+    - gocyclo
+    - revive
+
+linters-settings:
+  errcheck:
+    check-blank: true
+    exclude-functions:
+      - (io.Closer).Close
+      - (*database/sql.Rows).Close
+      - (*database/sql.Stmt).Close
+      - (*github.com/gin-gonic/gin.Context).Error
+
+  govet:
+    enable:
+      - shadow
+      - fieldalignment
+
+  gocognit:
+    min-complexity: 20
+
+  cyclop:
+    max-complexity: 15
+    skip-tests: true
+
+  funlen:
+    lines: 150
+    statements: 80
+
+  nestif:
+    min-complexity: 4
+
+  misspell:
+    locale: US
+
+  stylecheck:
+    checks: ["all", "-ST1000", "-ST1003"]
+
+  gosec:
+    excludes:
+      - G104
+      - G304
+
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+      - opinionated
+    disabled-checks:
+      - whyNoLint
+      - commentFormatting
+      - unnamedResult
+
+  contextcheck:
+    check-func-name: true
+
+  wrapcheck:
+    ignoreSigs:
+      - .Errorf(
+      - errors.New(
+      - errors.Unwrap(
+      - .Wrap(
+      - .Wrapf(
+
+  dupl:
+    threshold: 100
+
+  rowserrcheck:
+    packages:
+      - github.com/lib/pq
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  new: false
+
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - cyclop
+        - funlen
+        - errcheck
+        - gosec
+        - gocritic
+        - dupl
+
+    - linters:
+        - lll
+      source: '`json:".*"`|`yaml:".*"`|`gorm:".*"`'
+
+    - linters:
+        - lll
+      source: "^//go:generate "
+
+    - path: cmd/api/main\.go
+      linters:
+        - funlen
+        - gocognit
+
+    - path: internal/service/
+      linters:
+        - gocognit
+        - cyclop
+        - funlen
+
+    - path: internal/api/handlers/
+      linters:
+        - funlen
+
+    - path: internal/.*/models\.go
+      linters:
+        - stylecheck
+
+  exclude-dirs:
+    - vendor
+    - testdata
+    - bin
+    - .git
+    - third_party
+    - Вводные данные
