@@ -1,0 +1,22 @@
+version: '3.9'
+
+services:
+  test_db:
+    image: postgres:16
+    container_name: avito_test_db
+    environment:
+      POSTGRES_USER: avito
+      POSTGRES_PASSWORD: avito_password
+      POSTGRES_DB: avito_test
+    ports:
+      - "5436:5432"
+    volumes:
+      - test_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U avito -d avito_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  test_db_data:

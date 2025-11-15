@@ -26,8 +26,12 @@ func main() {
 
 	logger.Setup(envConfig)
 
-	// Создаём TxManager для нового storage слоя
-	txManager, err := storageGorm.NewTxManager(envConfig)
+	// Подключаемся к БД и создаём менеджер транзакций
+	database, err := storageGorm.ConnectDB(envConfig)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to connect to database")
+	}
+	txManager, err := storageGorm.NewTxManager(database)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to initialize database")
 	}

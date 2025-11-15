@@ -1,7 +1,6 @@
 package gorm
 
 import (
-	"avitoTechAutumn2025/internal/config"
 	"avitoTechAutumn2025/internal/metrics"
 	"avitoTechAutumn2025/internal/storage"
 	"context"
@@ -17,12 +16,7 @@ type txManager struct {
 }
 
 // NewTxManager создаёт новый менеджер транзакций для GORM
-func NewTxManager(envConf *config.Config) (storage.TxManager, error) {
-	db, err := ConnectDB(envConf)
-	if err != nil {
-		return nil, err
-	}
-
+func NewTxManager(db *gorm.DB) (storage.TxManager, error) {
 	// Получаем *sql.DB для мониторинга connection pool
 	sqlDB, err := db.DB()
 	if err != nil {
