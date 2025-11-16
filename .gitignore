@@ -3,6 +3,8 @@
 internal/mocks/*.go
 tests/load/results/
 tests/load/LOAD_TESTING.md
+coverage.out
+coverage.html
 
 .idea/
 
