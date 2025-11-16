@@ -1,0 +1,44 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: avito_api_logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: avito-api
+          __path__: /var/log/app/app.log
+    
+    # Парсинг JSON логов
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            time: time
+            message: message
+            caller: caller
+            request_id: request_id
+            operation: operation
+            user_id: user_id
+            team_name: team_name
+            pull_request_id: pull_request_id
+            method: method
+            path: path
+            status: status
+            duration_ms: duration_ms
+            error: error
+            layer: layer
+            latency: latency
+      
+      # Устанавливаем важные поля как labels для фильтрации
+      - labels:
+          level:
+          request_id:
