@@ -1,0 +1,650 @@
+openapi: 3.0.3
+info:
+  title: PR Reviewer Assignment Service
+  version: "1.0.0"
+  description: |
+    Микросервис для автоматического назначения ревьюверов на Pull Request'ы.
+    
+    ## Аутентификация
+    Сервис использует Bearer токены для аутентификации:
+    - `ADMIN_TOKEN` - полный доступ ко всем операциям
+    - `USER_TOKEN` - доступ только к операциям чтения (admin также может использовать user endpoints)
+    
+    Формат: `Authorization: Bearer <token>`
+
+servers:
+  - url: http://localhost:8080
+    description: Production server
+  - url: http://localhost:8081
+    description: Test server
+
+tags:
+  - name: Teams
+    description: Управление командами
+  - name: Users
+    description: Управление пользователями
+  - name: PullRequests
+    description: Управление Pull Request'ами
+  - name: Monitoring
+    description: Мониторинг и метрики
+
+components:
+  parameters:
+    TeamNameQuery:
+      name: team_name
+      in: query
+      required: true
+      schema:
+        type: string
+      description: Уникальное имя команды
+      example: backend-team
+    UserIdQuery:
+      name: user_id
+      in: query
+      required: true
+      schema:
+        type: string
+      description: Идентификатор пользователя
+      example: user123
+  
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Bearer токен аутентификации. Используйте ADMIN_TOKEN или USER_TOKEN из переменных окружения.
+        
+        Пример: `Authorization: Bearer your-token-here`
+  
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - TEAM_EXISTS
+                - PR_EXISTS
+                - PR_MERGED
+                - NOT_ASSIGNED
+                - NO_CANDIDATE
+                - NOT_FOUND
+                - INVALID_REQUEST
+                - INTERNAL_ERROR
+            message:
+              type: string
+      example:
+        error:
+          code: NOT_FOUND
+          message: resource not found
+    
+    TeamMember:
+      type: object
+      required: [user_id, username, is_active]
+      properties:
+        user_id:
+          type: string
+          example: u1
+        username:
+          type: string
+          example: Alice
+        is_active:
+          type: boolean
+          example: true
+    
+    Team:
+      type: object
+      required: [team_name, members]
+      properties:
+        team_name:
+          type: string
+          example: backend-team
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamMember'
+    
+    User:
+      type: object
+      required: [user_id, username, team_name, is_active]
+      properties:
+        user_id:
+          type: string
+          example: u1
+        username:
+          type: string
+          example: Alice
+        team_name:
+          type: string
+          example: backend-team
+        is_active:
+          type: boolean
+          example: true
+    
+    PullRequest:
+      type: object
+      required: [pull_request_id, pull_request_name, author_id, status, assigned_reviewers]
+      properties:
+        pull_request_id:
+          type: string
+          example: pr1
+        pull_request_name:
+          type: string
+          example: Add new feature
+        author_id:
+          type: string
+          example: u1
+        status:
+          type: string
+          enum: [OPEN, MERGED]
+          example: OPEN
+        assigned_reviewers:
+          type: array
+          items:
+            type: string
+          description: user_id назначенных ревьюверов (0..2)
+          example: ["u2", "u3"]
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        mergedAt:
+          type: string
+          format: date-time
+          nullable: true
+    
+    PullRequestShort:
+      type: object
+      required: [pull_request_id, pull_request_name, author_id, status]
+      properties:
+        pull_request_id:
+          type: string
+          example: pr1
+        pull_request_name:
+          type: string
+          example: Add new feature
+        author_id:
+          type: string
+          example: u1
+        status:
+          type: string
+          enum: [OPEN, MERGED]
+          example: OPEN
+  
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INVALID_REQUEST
+              message: "invalid request body"
+    
+    Unauthorized:
+      description: Требуется аутентификация
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INVALID_REQUEST
+              message: "unauthorized"
+    
+    Forbidden:
+      description: Недостаточно прав доступа
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INVALID_REQUEST
+              message: "forbidden: admin role required"
+    
+    ServerError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INTERNAL_ERROR
+              message: "internal server error"
+
+paths:
+  /metrics:
+    get:
+      tags:
+        - Monitoring
+      summary: Prometheus метрики
+      description: Эндпоинт для сбора метрик Prometheus. Не требует аутентификации.
+      responses:
+        '200':
+          description: Метрики в формате Prometheus
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: |
+                  # HELP http_requests_total Total number of HTTP requests
+                  # TYPE http_requests_total counter
+                  http_requests_total{method="GET",path="/metrics",status="200"} 42
+
+  /team/add:
+    post:
+      tags:
+        - Teams
+      summary: Создать команду с участниками
+      description: |
+        Создает новую команду и добавляет в нее участников. 
+        Если пользователи не существуют, они будут созданы.
+        Не требует аутентификации.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Team'
+            example:
+              team_name: backend-team
+              members:
+                - user_id: u1
+                  username: Alice
+                  is_active: true
+                - user_id: u2
+                  username: Bob
+                  is_active: true
+      responses:
+        '200':
+          description: Команда успешно создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /team/get:
+    get:
+      tags:
+        - Teams
+      summary: Получить информацию о команде
+      description: Возвращает информацию о команде и ее участниках. Требует USER или ADMIN токен.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TeamNameQuery'
+      responses:
+        '200':
+          description: Информация о команде
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Команда не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: NOT_FOUND
+                  message: "team not found"
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /team/deactivate:
+    post:
+      tags:
+        - Teams
+      summary: Деактивировать участников команды
+      description: |
+        Деактивирует указанных участников команды и переназначает их активные ревью другим участникам.
+        Требует ADMIN токен.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [team_name, user_ids]
+              properties:
+                team_name:
+                  type: string
+                  example: backend-team
+                user_ids:
+                  type: array
+                  items:
+                    type: string
+                  example: ["u1", "u2"]
+      responses:
+        '200':
+          description: Участники успешно деактивированы
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "users deactivated successfully"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /users/setIsActive:
+    post:
+      tags:
+        - Users
+      summary: Изменить статус активности пользователя
+      description: |
+        Устанавливает статус is_active для пользователя.
+        При деактивации переназначает его активные ревью другим участникам команды.
+        Требует ADMIN токен.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id, is_active]
+              properties:
+                user_id:
+                  type: string
+                  example: u1
+                is_active:
+                  type: boolean
+                  example: false
+      responses:
+        '200':
+          description: Статус пользователя успешно изменен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: NOT_FOUND
+                  message: "user not found"
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /users/getReview:
+    get:
+      tags:
+        - Users
+      summary: Получить назначенные ревью пользователя
+      description: |
+        Возвращает список открытых Pull Request'ов, назначенных на указанного пользователя.
+        Требует USER или ADMIN токен.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserIdQuery'
+      responses:
+        '200':
+          description: Список назначенных ревью
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pull_requests:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PullRequestShort'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: NOT_FOUND
+                  message: "user not found"
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /pullRequest/create:
+    post:
+      tags:
+        - PullRequests
+      summary: Создать Pull Request с автоназначением ревьюверов
+      description: |
+        Создает новый Pull Request и автоматически назначает до 2 ревьюверов из команды автора.
+        Ревьюверы назначаются по принципу наименьшей нагрузки (Round Robin).
+        Требует ADMIN токен.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pull_request_id, pull_request_name, author_id]
+              properties:
+                pull_request_id:
+                  type: string
+                  example: pr123
+                pull_request_name:
+                  type: string
+                  example: Add new feature
+                author_id:
+                  type: string
+                  example: u1
+      responses:
+        '200':
+          description: Pull Request успешно создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PullRequest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Автор не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: NOT_FOUND
+                  message: "author not found"
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /pullRequest/merge:
+    post:
+      tags:
+        - PullRequests
+      summary: Смержить Pull Request
+      description: |
+        Переводит Pull Request в статус MERGED и освобождает назначенных ревьюверов.
+        Требует ADMIN токен.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pull_request_id]
+              properties:
+                pull_request_id:
+                  type: string
+                  example: pr123
+      responses:
+        '200':
+          description: Pull Request успешно смержен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PullRequest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Pull Request не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: NOT_FOUND
+                  message: "pull request not found"
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /pullRequest/reassign:
+    post:
+      tags:
+        - PullRequests
+      summary: Переназначить ревьювера на Pull Request
+      description: |
+        Заменяет одного ревьювера на другого на указанном Pull Request.
+        Новый ревьювер назначается автоматически по принципу наименьшей нагрузки.
+        Требует ADMIN токен.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pull_request_id, old_user_id]
+              properties:
+                pull_request_id:
+                  type: string
+                  example: pr123
+                old_user_id:
+                  type: string
+                  description: ID ревьювера, которого нужно заменить
+                  example: u2
+      responses:
+        '200':
+          description: Ревьювер успешно переназначен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PullRequest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Pull Request или ревьювер не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error:
+                  code: NOT_FOUND
+                  message: "pull request or reviewer not found"
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /pullRequest/reassignInactive:
+    post:
+      tags:
+        - PullRequests
+      summary: Переназначить ревью неактивных пользователей
+      description: |
+        Массово переназначает все открытые Pull Request'ы с указанных неактивных ревьюверов на активных участников команды.
+        Используется при массовой деактивации пользователей.
+        Требует ADMIN токен.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_ids]
+              properties:
+                user_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Список ID неактивных пользователей
+                  example: ["u1", "u2"]
+      responses:
+        '200':
+          description: Ревью успешно переназначены
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "reviews reassigned successfully"
+                  reassigned_count:
+                    type: integer
+                    example: 5
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/ServerError'
