@@ -10,13 +10,39 @@ services:
       POSTGRES_DB: avito_test
     ports:
       - "5436:5432"
-    volumes:
-      - test_db_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U avito -d avito_test"]
-      interval: 5s
-      timeout: 5s
+      interval: 2s
+      timeout: 2s
       retries: 5
+    tmpfs:
+      - /var/lib/postgresql/data
 
-volumes:
-  test_db_data:
+  test_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: avito_test_api
+    environment:
+      DB_HOST: test_db
+      DB_PORT: 5432
+      DB_NAME: avito_test
+      DB_USER: avito
+      DB_PASSWORD: avito_password
+      DB_SSLMODE: disable
+      APP_PORT: 8081
+      PRODUCTION_TYPE: test
+      ADMIN_TOKEN: admin
+      USER_TOKEN: user
+    ports:
+      - "8081:8081"
+    depends_on:
+      test_db:
+        condition: service_healthy
+    command: ["/app/main"]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8081/metrics"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+      start_period: 5s

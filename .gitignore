@@ -1,5 +1,8 @@
 .env
+
 internal/mocks/*.go
+tests/load/results/
+tests/load/LOAD_TESTING.md
 
 .idea/
 

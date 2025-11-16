@@ -5,12 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"net/http"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 
 	"avitoTechAutumn2025/internal/api/handlers"
 	"avitoTechAutumn2025/internal/api/server"
@@ -48,7 +49,7 @@ func TestMain(m *testing.M) {
 	_ = os.Setenv("DB_USER", getEnv("TEST_DB_USER", "avito"))
 	_ = os.Setenv("DB_PASSWORD", getEnv("TEST_DB_PASSWORD", "avito_password"))
 	_ = os.Setenv("DB_SSLMODE", "disable")
-	_ = os.Setenv("APP_PORT", "8081") // Другой порт для E2E тестов
+	_ = os.Setenv("APP_PORT", "8082") // Другой порт для E2E тестов
 	_ = os.Setenv("PRODUCTION_TYPE", "test")
 	_ = os.Setenv("ADMIN_TOKEN", "admin-token-e2e")
 	_ = os.Setenv("USER_TOKEN", "user-token-e2e")
