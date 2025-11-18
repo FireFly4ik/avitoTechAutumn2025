@@ -186,13 +186,13 @@ USER_TOKEN=user
 
 ```bash
 # Запуск всего стека (API + PostgreSQL + Prometheus + Grafana)
-docker-compose up -d
+sudo docker-compose up -d
 
 # Проверка статуса
-docker-compose ps
+sudo docker-compose ps
 
 # Просмотр логов
-docker-compose logs -f api
+sudo docker-compose logs -f api
 ```
 
 #### Вариант 2: Make команда

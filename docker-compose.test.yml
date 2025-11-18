@@ -1,9 +1,15 @@
 version: '3.9'
 
+networks:
+  avito_test_network:
+    driver: bridge
+
 services:
   test_db:
     image: postgres:16
     container_name: avito_test_db
+    networks:
+      - avito_test_network
     environment:
       POSTGRES_USER: avito
       POSTGRES_PASSWORD: avito_password
@@ -23,6 +29,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: avito_test_api
+    networks:
+      - avito_test_network
     environment:
       DB_HOST: test_db
       DB_PORT: 5432

@@ -2,8 +2,8 @@
 
 # Переменные
 BINARY_NAME=main
-DOCKER_COMPOSE=docker-compose
-DOCKER_COMPOSE_TEST=docker-compose -f docker-compose.test.yml
+DOCKER_COMPOSE=sudo docker-compose
+DOCKER_COMPOSE_TEST=sudo docker-compose -f docker-compose.test.yml
 
 # Цвета для вывода
 GREEN=\033[0;32m
