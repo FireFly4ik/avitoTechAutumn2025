@@ -35,7 +35,7 @@ func (r *userRepository) GetByID(ctx context.Context, userID string) (*domain.Us
 		UserID:   dbUser.UserID,
 		Username: dbUser.Username,
 		TeamName: dbUser.TeamName,
-		IsActive: dbUser.IsActive,
+		IsActive: derefBool(dbUser.IsActive),
 	}, nil
 }
 
@@ -68,7 +68,7 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 	// Обновляем domain модель актуальными данными из БД
 	user.Username = dbUser.Username
 	user.TeamName = dbUser.TeamName
-	user.IsActive = dbUser.IsActive
+	user.IsActive = derefBool(dbUser.IsActive)
 
 	return nil
 }
@@ -97,7 +97,7 @@ func (r *userRepository) GetActiveTeamMembers(ctx context.Context, userID string
 			UserID:   dbUser.UserID,
 			Username: dbUser.Username,
 			TeamName: dbUser.TeamName,
-			IsActive: dbUser.IsActive,
+			IsActive: derefBool(dbUser.IsActive),
 		}
 	}
 

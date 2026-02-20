@@ -196,7 +196,7 @@ func (r *pullRequestRepository) Update(ctx context.Context, pr *domain.PullReque
 	return nil
 }
 
-// AssignReviewer назначает ревьювера на PR
+// AssignReviewer назначает ревьювера на PR.
 func (r *pullRequestRepository) AssignReviewer(ctx context.Context, prID, reviewerID string) error {
 	requestID := logger.GetRequestID(ctx)
 
@@ -207,74 +207,6 @@ func (r *pullRequestRepository) AssignReviewer(ctx context.Context, prID, review
 		Str("reviewer_id", reviewerID).
 		Msg("assigning reviewer to pull request")
 
-	// Проверяем существование PR
-	var pr PullRequest
-	if err := r.db.WithContext(ctx).Where("pull_request_id = ?", prID).First(&pr).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.Warn().
-				Str("request_id", requestID).
-				Str("layer", "storage").
-				Str("pull_request_id", prID).
-				Msg("pull request not found")
-			return storage.ErrNotFound
-		}
-		log.Error().
-			Err(err).
-			Str("request_id", requestID).
-			Str("layer", "storage").
-			Str("pull_request_id", prID).
-			Msg("error fetching pull request")
-		return err
-	}
-
-	// Проверяем существование пользователя
-	var user User
-	if err := r.db.WithContext(ctx).Where("user_id = ?", reviewerID).First(&user).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.Warn().
-				Str("request_id", requestID).
-				Str("layer", "storage").
-				Str("reviewer_id", reviewerID).
-				Msg("reviewer not found")
-			return storage.ErrNotFound
-		}
-		log.Error().
-			Err(err).
-			Str("request_id", requestID).
-			Str("layer", "storage").
-			Str("reviewer_id", reviewerID).
-			Msg("error fetching reviewer")
-		return err
-	}
-
-	// Проверяем не назначен ли уже
-	var existing Reviewer
-	err := r.db.WithContext(ctx).
-		Where("pull_request_id = ? AND reviewer_id = ?", prID, reviewerID).
-		First(&existing).Error
-
-	if err == nil {
-		log.Warn().
-			Str("request_id", requestID).
-			Str("layer", "storage").
-			Str("pull_request_id", prID).
-			Str("reviewer_id", reviewerID).
-			Msg("reviewer already assigned")
-		return storage.ErrAlreadyExists
-	}
-
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		log.Error().
-			Err(err).
-			Str("request_id", requestID).
-			Str("layer", "storage").
-			Str("pull_request_id", prID).
-			Str("reviewer_id", reviewerID).
-			Msg("error checking existing assignment")
-		return err
-	}
-
-	// Создаём назначение
 	reviewer := &Reviewer{
 		PullRequestID: prID,
 		ReviewerID:    reviewerID,
@@ -283,14 +215,25 @@ func (r *pullRequestRepository) AssignReviewer(ctx context.Context, prID, review
 	result := r.db.WithContext(ctx).Create(reviewer)
 	if result.Error != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(result.Error, &pgErr) && pgErr.Code == storage.UniqueViolation {
-			log.Warn().
-				Str("request_id", requestID).
-				Str("layer", "storage").
-				Str("pull_request_id", prID).
-				Str("reviewer_id", reviewerID).
-				Msg("reviewer already assigned (unique constraint)")
-			return storage.ErrAlreadyExists
+		if errors.As(result.Error, &pgErr) {
+			switch pgErr.Code {
+			case storage.UniqueViolation:
+				log.Warn().
+					Str("request_id", requestID).
+					Str("layer", "storage").
+					Str("pull_request_id", prID).
+					Str("reviewer_id", reviewerID).
+					Msg("reviewer already assigned")
+				return storage.ErrAlreadyExists
+			case storage.ForeignKeyViolation:
+				log.Warn().
+					Str("request_id", requestID).
+					Str("layer", "storage").
+					Str("pull_request_id", prID).
+					Str("reviewer_id", reviewerID).
+					Msg("PR or reviewer not found (FK violation)")
+				return storage.ErrNotFound
+			}
 		}
 		if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
 			return storage.ErrAlreadyExists
@@ -547,4 +490,45 @@ func (r *pullRequestRepository) GetInactiveReviewers(ctx context.Context, prID s
 		Msg("successfully fetched inactive reviewers")
 
 	return reviewerIDs, nil
+}
+
+// GetOpenPRsByReviewers возвращает ID открытых PR, где указанные пользователи являются ревьюверами
+func (r *pullRequestRepository) GetOpenPRsByReviewers(ctx context.Context, userIDs []string) ([]string, error) {
+	requestID := logger.GetRequestID(ctx)
+
+	log.Info().
+		Str("request_id", requestID).
+		Str("layer", "storage").
+		Any("user_ids", userIDs).
+		Msg("fetching open PRs by reviewers")
+
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+
+	var prIDs []string
+
+	result := r.db.WithContext(ctx).
+		Table("pull_request_reviewers").
+		Select("DISTINCT pull_request_reviewers.pull_request_id").
+		Joins("JOIN pull_requests ON pull_requests.pull_request_id = pull_request_reviewers.pull_request_id").
+		Where("pull_request_reviewers.reviewer_id IN ? AND pull_requests.status = ?", userIDs, "OPEN").
+		Pluck("pull_request_reviewers.pull_request_id", &prIDs)
+
+	if result.Error != nil {
+		log.Error().
+			Err(result.Error).
+			Str("request_id", requestID).
+			Str("layer", "storage").
+			Msg("error fetching open PRs by reviewers")
+		return nil, result.Error
+	}
+
+	log.Info().
+		Str("request_id", requestID).
+		Str("layer", "storage").
+		Int("pr_count", len(prIDs)).
+		Msg("successfully fetched open PRs by reviewers")
+
+	return prIDs, nil
 }

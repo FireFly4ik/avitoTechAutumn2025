@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"avitoTechAutumn2025/internal/domain"
 	"avitoTechAutumn2025/internal/storage"
@@ -20,7 +21,7 @@ func NewTeamRepository(db *gorm.DB) storage.TeamRepository {
 	return &teamRepository{db: db}
 }
 
-// Create создаёт новую команду вместе с пользователями
+// Create создаёт новую команду вместе с пользователями (batch upsert)
 func (r *teamRepository) Create(ctx context.Context, team *domain.Team, users []domain.User) error {
 	dbTeam := &Team{
 		TeamName: team.Name,
@@ -36,35 +37,25 @@ func (r *teamRepository) Create(ctx context.Context, team *domain.Team, users []
 		return result.Error
 	}
 
-	// Добавляем участников команды - создаём или обновляем каждого отдельно
+	// Batch upsert участников команды
 	if len(users) > 0 {
-		for _, user := range users {
-			// Пытаемся найти существующего пользователя
-			var existingUser User
-			err := r.db.WithContext(ctx).Where("user_id = ?", user.UserID).First(&existingUser).Error
-
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					// Пользователь не существует - создаём нового через raw SQL
-					if err := r.db.WithContext(ctx).Exec(
-						"INSERT INTO users (user_id, username, team_name, is_active) VALUES (?, ?, ?, ?)",
-						user.UserID, user.Username, team.Name, user.IsActive,
-					).Error; err != nil {
-						return err
-					}
-				} else {
-					return err
-				}
-			} else {
-				// Пользователь существует - обновляем все поля явно
-				if err := r.db.WithContext(ctx).Model(&existingUser).Updates(map[string]interface{}{
-					"username":  user.Username,
-					"team_name": team.Name,
-					"is_active": user.IsActive,
-				}).Error; err != nil {
-					return err
-				}
+		dbUsers := make([]User, len(users))
+		for i, u := range users {
+			dbUsers[i] = User{
+				UserID:   u.UserID,
+				Username: u.Username,
+				TeamName: team.Name,
+				IsActive: boolPtr(u.IsActive),
 			}
+		}
+
+		if err := r.db.WithContext(ctx).
+			Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "user_id"}},
+				DoUpdates: clause.AssignmentColumns([]string{"username", "team_name", "is_active"}),
+			}).
+			Create(&dbUsers).Error; err != nil {
+			return err
 		}
 	}
 
@@ -79,7 +70,7 @@ func (r *teamRepository) Create(ctx context.Context, team *domain.Team, users []
 		team.Members[i] = domain.TeamMember{
 			UserID:   member.UserID,
 			Username: member.Username,
-			IsActive: member.IsActive,
+			IsActive: derefBool(member.IsActive),
 		}
 	}
 
@@ -105,7 +96,7 @@ func (r *teamRepository) GetByName(ctx context.Context, teamName string) (*domai
 		members[i] = domain.TeamMember{
 			UserID:   member.UserID,
 			Username: member.Username,
-			IsActive: member.IsActive,
+			IsActive: derefBool(member.IsActive),
 		}
 	}
 
@@ -120,6 +111,24 @@ func (r *teamRepository) DeactivateAllMembers(ctx context.Context, teamName stri
 	result := r.db.WithContext(ctx).
 		Model(&User{}).
 		Where("team_name = ? AND is_active = ?", teamName, true).
+		Update("is_active", false)
+
+	if result.Error != nil {
+		return 0, result.Error
+	}
+
+	return int(result.RowsAffected), nil
+}
+
+// DeactivateMembers деактивирует указанных участников команды
+func (r *teamRepository) DeactivateMembers(ctx context.Context, teamName string, userIDs []string) (int, error) {
+	if len(userIDs) == 0 {
+		return 0, nil
+	}
+
+	result := r.db.WithContext(ctx).
+		Model(&User{}).
+		Where("team_name = ? AND user_id IN ? AND is_active = ?", teamName, userIDs, true).
 		Update("is_active", false)
 
 	if result.Error != nil {

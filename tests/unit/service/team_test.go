@@ -15,6 +15,7 @@ import (
 )
 
 func TestCreateTeam_Success(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
@@ -56,6 +57,7 @@ func TestCreateTeam_Success(t *testing.T) {
 }
 
 func TestCreateTeam_AlreadyExists(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
@@ -92,6 +94,7 @@ func TestCreateTeam_AlreadyExists(t *testing.T) {
 }
 
 func TestGetTeam_Success(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
@@ -107,8 +110,8 @@ func TestGetTeam_Success(t *testing.T) {
 		},
 	}
 
-	// Setup expectations
-	mockTxMgr.On("Do", mock.Anything, mock.AnythingOfType("func(context.Context, storage.Tx) error")).
+	// Setup expectations — GetTeam использует DoRead (read-only)
+	mockTxMgr.On("DoRead", mock.Anything, mock.AnythingOfType("func(context.Context, storage.Tx) error")).
 		Run(func(args mock.Arguments) {
 			fn := args.Get(1).(func(context.Context, storage.Tx) error)
 
@@ -135,6 +138,7 @@ func TestGetTeam_Success(t *testing.T) {
 }
 
 func TestGetTeam_NotFound(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
@@ -142,8 +146,8 @@ func TestGetTeam_NotFound(t *testing.T) {
 
 	svc := service.New(mockTxMgr)
 
-	// Setup expectations
-	mockTxMgr.On("Do", mock.Anything, mock.AnythingOfType("func(context.Context, storage.Tx) error")).
+	// Setup expectations — GetTeam использует DoRead (read-only)
+	mockTxMgr.On("DoRead", mock.Anything, mock.AnythingOfType("func(context.Context, storage.Tx) error")).
 		Run(func(args mock.Arguments) {
 			fn := args.Get(1).(func(context.Context, storage.Tx) error)
 
@@ -165,10 +169,12 @@ func TestGetTeam_NotFound(t *testing.T) {
 }
 
 func TestDeactivateTeamMembers_Success(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
 	mockTeamRepo := mocks.NewTeamRepository(t)
+	mockPRRepo := mocks.NewPullRequestRepository(t)
 
 	svc := service.New(mockTxMgr)
 
@@ -177,8 +183,11 @@ func TestDeactivateTeamMembers_Success(t *testing.T) {
 	}
 
 	existingTeam := &domain.Team{
-		Name:    "backend",
-		Members: []domain.TeamMember{},
+		Name: "backend",
+		Members: []domain.TeamMember{
+			{UserID: "u1", Username: "Alice", IsActive: false},
+			{UserID: "u2", Username: "Bob", IsActive: false},
+		},
 	}
 
 	// Setup expectations
@@ -187,6 +196,7 @@ func TestDeactivateTeamMembers_Success(t *testing.T) {
 			fn := args.Get(1).(func(context.Context, storage.Tx) error)
 
 			mockTx.On("TeamRepo").Return(mockTeamRepo)
+			mockTx.On("PullRequestRepo").Return(mockPRRepo)
 
 			// Проверяем существование команды
 			mockTeamRepo.On("GetByName", mock.Anything, "backend").
@@ -195,6 +205,10 @@ func TestDeactivateTeamMembers_Success(t *testing.T) {
 			// Деактивируем 5 участников
 			mockTeamRepo.On("DeactivateAllMembers", mock.Anything, "backend").
 				Return(5, nil)
+
+			// Нет открытых PR для переназначения
+			mockPRRepo.On("GetOpenPRsByReviewers", mock.Anything, mock.Anything).
+				Return([]string{}, nil)
 
 			_ = fn(context.Background(), mockTx)
 		}).Return(nil) // Act
@@ -205,4 +219,5 @@ func TestDeactivateTeamMembers_Success(t *testing.T) {
 	assert.NotNil(t, result)
 	assert.Equal(t, "backend", result.TeamName)
 	assert.Equal(t, 5, result.DeactivatedUserCount)
+	assert.Equal(t, 0, result.ReassignedCount)
 }

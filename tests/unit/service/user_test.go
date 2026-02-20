@@ -15,6 +15,7 @@ import (
 )
 
 func TestSetUserIsActive_Activate(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
@@ -59,6 +60,7 @@ func TestSetUserIsActive_Activate(t *testing.T) {
 }
 
 func TestSetUserIsActive_Deactivate(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
@@ -101,6 +103,7 @@ func TestSetUserIsActive_Deactivate(t *testing.T) {
 }
 
 func TestSetUserIsActive_UserNotFound(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
@@ -132,6 +135,7 @@ func TestSetUserIsActive_UserNotFound(t *testing.T) {
 }
 
 func TestSetUserIsActive_Idempotent(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
@@ -175,6 +179,7 @@ func TestSetUserIsActive_Idempotent(t *testing.T) {
 }
 
 func TestGetReviewerAssignments_Success(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
@@ -197,8 +202,8 @@ func TestGetReviewerAssignments_Success(t *testing.T) {
 		},
 	}
 
-	// Setup expectations
-	mockTxMgr.On("Do", mock.Anything, mock.AnythingOfType("func(context.Context, storage.Tx) error")).
+	// Setup expectations — GetReviewerAssignments использует DoRead (read-only)
+	mockTxMgr.On("DoRead", mock.Anything, mock.AnythingOfType("func(context.Context, storage.Tx) error")).
 		Run(func(args mock.Arguments) {
 			fn := args.Get(1).(func(context.Context, storage.Tx) error)
 
@@ -222,6 +227,7 @@ func TestGetReviewerAssignments_Success(t *testing.T) {
 }
 
 func TestGetReviewerAssignments_EmptyList(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
@@ -229,8 +235,8 @@ func TestGetReviewerAssignments_EmptyList(t *testing.T) {
 
 	svc := service.New(mockTxMgr)
 
-	// Setup expectations
-	mockTxMgr.On("Do", mock.Anything, mock.AnythingOfType("func(context.Context, storage.Tx) error")).
+	// Setup expectations — GetReviewerAssignments использует DoRead (read-only)
+	mockTxMgr.On("DoRead", mock.Anything, mock.AnythingOfType("func(context.Context, storage.Tx) error")).
 		Run(func(args mock.Arguments) {
 			fn := args.Get(1).(func(context.Context, storage.Tx) error)
 
@@ -253,6 +259,7 @@ func TestGetReviewerAssignments_EmptyList(t *testing.T) {
 }
 
 func TestGetReviewerAssignments_IncludesMergedPRs(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
@@ -275,8 +282,8 @@ func TestGetReviewerAssignments_IncludesMergedPRs(t *testing.T) {
 		},
 	}
 
-	// Setup expectations
-	mockTxMgr.On("Do", mock.Anything, mock.AnythingOfType("func(context.Context, storage.Tx) error")).
+	// Setup expectations — GetReviewerAssignments использует DoRead (read-only)
+	mockTxMgr.On("DoRead", mock.Anything, mock.AnythingOfType("func(context.Context, storage.Tx) error")).
 		Run(func(args mock.Arguments) {
 			fn := args.Get(1).(func(context.Context, storage.Tx) error)
 
@@ -305,10 +312,12 @@ func TestGetReviewerAssignments_IncludesMergedPRs(t *testing.T) {
 }
 
 func TestDeactivateTeamMembers_WithOpenPRs(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
 	mockTeamRepo := mocks.NewTeamRepository(t)
+	mockPRRepo := mocks.NewPullRequestRepository(t)
 
 	svc := service.New(mockTxMgr)
 
@@ -317,8 +326,11 @@ func TestDeactivateTeamMembers_WithOpenPRs(t *testing.T) {
 	}
 
 	existingTeam := &domain.Team{
-		Name:    "backend",
-		Members: []domain.TeamMember{},
+		Name: "backend",
+		Members: []domain.TeamMember{
+			{UserID: "u1", Username: "Alice", IsActive: false},
+			{UserID: "u2", Username: "Bob", IsActive: false},
+		},
 	}
 
 	// Setup expectations
@@ -327,6 +339,7 @@ func TestDeactivateTeamMembers_WithOpenPRs(t *testing.T) {
 			fn := args.Get(1).(func(context.Context, storage.Tx) error)
 
 			mockTx.On("TeamRepo").Return(mockTeamRepo)
+			mockTx.On("PullRequestRepo").Return(mockPRRepo)
 
 			// Проверяем существование команды
 			mockTeamRepo.On("GetByName", mock.Anything, "backend").
@@ -335,6 +348,10 @@ func TestDeactivateTeamMembers_WithOpenPRs(t *testing.T) {
 			// Деактивируем 3 участников
 			mockTeamRepo.On("DeactivateAllMembers", mock.Anything, "backend").
 				Return(3, nil)
+
+			// Нет открытых PR
+			mockPRRepo.On("GetOpenPRsByReviewers", mock.Anything, mock.Anything).
+				Return([]string{}, nil)
 
 			_ = fn(context.Background(), mockTx)
 		}).Return(nil) // Act
@@ -348,6 +365,7 @@ func TestDeactivateTeamMembers_WithOpenPRs(t *testing.T) {
 }
 
 func TestDeactivateTeamMembers_TeamNotFound(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
@@ -380,10 +398,12 @@ func TestDeactivateTeamMembers_TeamNotFound(t *testing.T) {
 }
 
 func TestDeactivateTeamMembers_AlreadyAllInactive(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
 	mockTeamRepo := mocks.NewTeamRepository(t)
+	mockPRRepo := mocks.NewPullRequestRepository(t)
 
 	svc := service.New(mockTxMgr)
 
@@ -392,8 +412,10 @@ func TestDeactivateTeamMembers_AlreadyAllInactive(t *testing.T) {
 	}
 
 	existingTeam := &domain.Team{
-		Name:    "inactive-team",
-		Members: []domain.TeamMember{},
+		Name: "inactive-team",
+		Members: []domain.TeamMember{
+			{UserID: "u1", Username: "Alice", IsActive: false},
+		},
 	}
 
 	// Setup expectations
@@ -402,6 +424,7 @@ func TestDeactivateTeamMembers_AlreadyAllInactive(t *testing.T) {
 			fn := args.Get(1).(func(context.Context, storage.Tx) error)
 
 			mockTx.On("TeamRepo").Return(mockTeamRepo)
+			mockTx.On("PullRequestRepo").Return(mockPRRepo)
 
 			// Проверяем существование команды
 			mockTeamRepo.On("GetByName", mock.Anything, "inactive-team").
@@ -410,6 +433,10 @@ func TestDeactivateTeamMembers_AlreadyAllInactive(t *testing.T) {
 			// Все уже неактивны - деактивировано 0
 			mockTeamRepo.On("DeactivateAllMembers", mock.Anything, "inactive-team").
 				Return(0, nil)
+
+			// Нет открытых PR
+			mockPRRepo.On("GetOpenPRsByReviewers", mock.Anything, mock.Anything).
+				Return([]string{}, nil)
 
 			_ = fn(context.Background(), mockTx)
 		}).Return(nil) // Act
@@ -420,4 +447,5 @@ func TestDeactivateTeamMembers_AlreadyAllInactive(t *testing.T) {
 	assert.NotNil(t, result)
 	assert.Equal(t, "inactive-team", result.TeamName)
 	assert.Equal(t, 0, result.DeactivatedUserCount)
+	assert.Equal(t, 0, result.ReassignedCount)
 }

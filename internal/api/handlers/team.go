@@ -1,12 +1,12 @@
 package handlers
 
 import (
-	"avitoTechAutumn2025/internal/api"
 	"avitoTechAutumn2025/internal/api/middleware"
 	"avitoTechAutumn2025/internal/domain"
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
-	"net/http"
 )
 
 // AddTeam обрабатывает создание команды с участниками (upsert пользователей)
@@ -21,18 +21,8 @@ func (h *Handler) AddTeam(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Error().
-			Err(err).
-			Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).
-			Str("layer", "handler").
-			Msg("failed to parse request")
-
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Error: api.Error{
-				Code:    api.ErrCodeInvalidRequest,
-				Message: "Failed to parse request: " + err.Error(),
-			},
-		})
+		log.Error().Err(err).Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).Str("layer", "handler").Msg("failed to parse request")
+		handleValidationError(c, "Failed to parse request: "+err.Error())
 		return
 	}
 
@@ -75,17 +65,8 @@ func (h *Handler) AddTeam(c *gin.Context) {
 func (h *Handler) GetTeam(c *gin.Context) {
 	teamName := c.Query("team_name")
 	if teamName == "" {
-		log.Warn().
-			Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).
-			Str("layer", "handler").
-			Msg("missing team_name parameter")
-
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Error: api.Error{
-				Code:    api.ErrCodeInvalidRequest,
-				Message: "team_name parameter is required",
-			},
-		})
+		log.Warn().Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).Str("layer", "handler").Msg("missing team_name parameter")
+		handleValidationError(c, "team_name parameter is required")
 		return
 	}
 
@@ -111,25 +92,17 @@ func (h *Handler) GetTeam(c *gin.Context) {
 	c.JSON(http.StatusOK, mapTeamToAPI(team))
 }
 
-// DeactivateTeam обрабатывает массовую деактивацию всех участников команды
+// DeactivateTeam обрабатывает массовую деактивацию участников команды и переназначение их ревью.
+// Если user_ids не передан или пуст — деактивирует всех участников команды.
 func (h *Handler) DeactivateTeam(c *gin.Context) {
 	var req struct {
-		TeamName string `json:"team_name" binding:"required"`
+		TeamName string   `json:"team_name" binding:"required"`
+		UserIDs  []string `json:"user_ids"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Error().
-			Err(err).
-			Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).
-			Str("layer", "handler").
-			Msg("failed to parse request")
-
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Error: api.Error{
-				Code:    api.ErrCodeInvalidRequest,
-				Message: "Failed to parse request: " + err.Error(),
-			},
-		})
+		log.Error().Err(err).Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).Str("layer", "handler").Msg("failed to parse request")
+		handleValidationError(c, "Failed to parse request: "+err.Error())
 		return
 	}
 
@@ -137,10 +110,12 @@ func (h *Handler) DeactivateTeam(c *gin.Context) {
 		Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).
 		Str("layer", "handler").
 		Str("team_name", req.TeamName).
+		Any("user_ids", req.UserIDs).
 		Msg("deactivating team members")
 
 	input := &domain.DeactivateTeamInput{
 		TeamName: req.TeamName,
+		UserIDs:  req.UserIDs,
 	}
 
 	result, err := h.service.DeactivateTeamMembers(c.Request.Context(), input)
@@ -154,10 +129,13 @@ func (h *Handler) DeactivateTeam(c *gin.Context) {
 		Str("layer", "handler").
 		Str("team_name", result.TeamName).
 		Int("deactivated_count", result.DeactivatedUserCount).
+		Int("reassigned_count", result.ReassignedCount).
 		Msg("successfully deactivated team members")
 
 	c.JSON(http.StatusOK, gin.H{
 		"team_name":              result.TeamName,
 		"deactivated_user_count": result.DeactivatedUserCount,
+		"reassigned_count":       result.ReassignedCount,
+		"message":                "users deactivated successfully",
 	})
 }

@@ -361,3 +361,486 @@ func TestGetReviewHandler_Success(t *testing.T) {
 
 	mockService.AssertExpectations(t)
 }
+
+// === Тесты DeactivateTeam handler ===
+
+func TestDeactivateTeamHandler_Success(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	requestBody := map[string]interface{}{
+		"team_name": "backend",
+	}
+
+	expectedResult := &domain.DeactivateTeamResult{
+		TeamName:             "backend",
+		DeactivatedUserCount: 5,
+		ReassignedCount:      2,
+	}
+
+	mockService.On("DeactivateTeamMembers", mock.Anything, mock.MatchedBy(func(input *domain.DeactivateTeamInput) bool {
+		return input.TeamName == "backend" && len(input.UserIDs) == 0
+	})).Return(expectedResult, nil)
+
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/team/deactivate", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]interface{}
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
+
+	assert.Equal(t, "backend", response["team_name"])
+	assert.Equal(t, float64(5), response["deactivated_user_count"])
+	assert.Equal(t, float64(2), response["reassigned_count"])
+
+	mockService.AssertExpectations(t)
+}
+
+func TestDeactivateTeamHandler_WithUserIDs(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	requestBody := map[string]interface{}{
+		"team_name": "backend",
+		"user_ids":  []string{"u1", "u2"},
+	}
+
+	expectedResult := &domain.DeactivateTeamResult{
+		TeamName:             "backend",
+		DeactivatedUserCount: 2,
+		ReassignedCount:      0,
+	}
+
+	mockService.On("DeactivateTeamMembers", mock.Anything, mock.MatchedBy(func(input *domain.DeactivateTeamInput) bool {
+		return input.TeamName == "backend" && len(input.UserIDs) == 2 &&
+			input.UserIDs[0] == "u1" && input.UserIDs[1] == "u2"
+	})).Return(expectedResult, nil)
+
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/team/deactivate", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]interface{}
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
+
+	assert.Equal(t, "backend", response["team_name"])
+	assert.Equal(t, float64(2), response["deactivated_user_count"])
+
+	mockService.AssertExpectations(t)
+}
+
+func TestDeactivateTeamHandler_TeamNotFound(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	requestBody := map[string]interface{}{
+		"team_name": "nonexistent",
+	}
+
+	mockService.On("DeactivateTeamMembers", mock.Anything, mock.Anything).
+		Return(nil, domain.ErrResourceNotFound)
+
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/team/deactivate", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	mockService.AssertExpectations(t)
+}
+
+func TestDeactivateTeamHandler_MissingTeamName(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	requestBody := map[string]interface{}{}
+
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/team/deactivate", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// === Тесты ReassignPullRequest handler ===
+
+func TestReassignPullRequestHandler_Success(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	requestBody := map[string]interface{}{
+		"pull_request_id": "pr-001",
+		"old_reviewer_id": "user-2",
+	}
+
+	expectedResult := &domain.ReassignPullRequestResult{
+		PullRequest: domain.PullRequest{
+			ID:                "pr-001",
+			AuthorID:          "user-1",
+			Status:            domain.PullRequestStatusOpen,
+			AssignedReviewers: []string{"user-3", "user-4"},
+		},
+		ReplacedBy: "user-4",
+	}
+
+	mockService.On("ReassignPullRequest", mock.Anything, mock.MatchedBy(func(input *domain.ReassignPullRequestInput) bool {
+		return input.PullRequestID == "pr-001" && input.OldUserID == "user-2"
+	})).Return(expectedResult, nil)
+
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/pullRequest/reassign", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]interface{}
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
+
+	assert.Equal(t, "user-4", response["replaced_by"])
+	pr := response["pr"].(map[string]interface{})
+	assert.Equal(t, "pr-001", pr["pull_request_id"])
+
+	mockService.AssertExpectations(t)
+}
+
+func TestReassignPullRequestHandler_MergedPR(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	requestBody := map[string]interface{}{
+		"pull_request_id": "pr-001",
+		"old_reviewer_id": "user-2",
+	}
+
+	mockService.On("ReassignPullRequest", mock.Anything, mock.Anything).
+		Return(nil, domain.ErrReassignOnMerged)
+
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/pullRequest/reassign", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+
+	var response map[string]interface{}
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
+	errorObj := response["error"].(map[string]interface{})
+	assert.Equal(t, "PR_MERGED", errorObj["code"])
+
+	mockService.AssertExpectations(t)
+}
+
+func TestReassignPullRequestHandler_NotAssigned(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	requestBody := map[string]interface{}{
+		"pull_request_id": "pr-001",
+		"old_reviewer_id": "user-99",
+	}
+
+	mockService.On("ReassignPullRequest", mock.Anything, mock.Anything).
+		Return(nil, domain.ErrReviewerMissing)
+
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/pullRequest/reassign", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+	mockService.AssertExpectations(t)
+}
+
+func TestReassignPullRequestHandler_InvalidRequest(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	// Отсутствует pull_request_id
+	requestBody := map[string]interface{}{
+		"old_reviewer_id": "user-2",
+	}
+
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/pullRequest/reassign", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// === Тесты ReassignInactiveReviewers handler ===
+
+func TestReassignInactiveHandler_Success(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	requestBody := map[string]interface{}{
+		"pull_request_id": "pr-001",
+	}
+
+	expectedResult := &domain.ReassignInactiveResult{
+		PullRequestID: "pr-001",
+		ReassignmentDetails: []domain.ReviewerReassignment{
+			{OldReviewerID: "user-2", NewReviewerID: "user-4", WasRemoved: false},
+			{OldReviewerID: "user-5", NewReviewerID: "", WasRemoved: true},
+		},
+	}
+
+	mockService.On("ReassignInactiveReviewers", mock.Anything, mock.MatchedBy(func(input *domain.ReassignInactiveInput) bool {
+		return input.PullRequestID == "pr-001"
+	})).Return(expectedResult, nil)
+
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/pullRequest/reassignInactive", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]interface{}
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
+
+	assert.Equal(t, "pr-001", response["pull_request_id"])
+	details := response["reassignment_details"].([]interface{})
+	assert.Equal(t, 2, len(details))
+
+	// Проверяем первый — замена
+	detail0 := details[0].(map[string]interface{})
+	assert.Equal(t, "user-2", detail0["old_reviewer_id"])
+	assert.Equal(t, "user-4", detail0["new_reviewer_id"])
+	assert.False(t, detail0["was_removed"].(bool))
+
+	// Проверяем второй — удаление без замены
+	detail1 := details[1].(map[string]interface{})
+	assert.Equal(t, "user-5", detail1["old_reviewer_id"])
+	assert.True(t, detail1["was_removed"].(bool))
+
+	mockService.AssertExpectations(t)
+}
+
+func TestReassignInactiveHandler_NoInactive(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	requestBody := map[string]interface{}{
+		"pull_request_id": "pr-001",
+	}
+
+	expectedResult := &domain.ReassignInactiveResult{
+		PullRequestID:       "pr-001",
+		ReassignmentDetails: []domain.ReviewerReassignment{},
+	}
+
+	mockService.On("ReassignInactiveReviewers", mock.Anything, mock.Anything).
+		Return(expectedResult, nil)
+
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/pullRequest/reassignInactive", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]interface{}
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
+
+	details := response["reassignment_details"].([]interface{})
+	assert.Equal(t, 0, len(details))
+
+	mockService.AssertExpectations(t)
+}
+
+func TestReassignInactiveHandler_MergedPR(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	requestBody := map[string]interface{}{
+		"pull_request_id": "pr-merged",
+	}
+
+	mockService.On("ReassignInactiveReviewers", mock.Anything, mock.Anything).
+		Return(nil, domain.ErrReassignOnMerged)
+
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/pullRequest/reassignInactive", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+	mockService.AssertExpectations(t)
+}
+
+func TestReassignInactiveHandler_PRNotFound(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	requestBody := map[string]interface{}{
+		"pull_request_id": "nonexistent",
+	}
+
+	mockService.On("ReassignInactiveReviewers", mock.Anything, mock.Anything).
+		Return(nil, domain.ErrResourceNotFound)
+
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/pullRequest/reassignInactive", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	mockService.AssertExpectations(t)
+}
+
+// === Тесты авторизации ===
+
+func TestDeactivateTeamHandler_NoAuth(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	requestBody := map[string]interface{}{
+		"team_name": "backend",
+	}
+
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/team/deactivate", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	// НЕ устанавливаем Authorization
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestMergePullRequestHandler_InvalidRequest(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	// Пустой body
+	req := httptest.NewRequest(http.MethodPost, "/pullRequest/merge", bytes.NewReader([]byte("{}")))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestMergePullRequestHandler_NotFound(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	requestBody := map[string]interface{}{
+		"pull_request_id": "nonexistent",
+	}
+
+	mockService.On("MergePullRequest", mock.Anything, mock.Anything).
+		Return(nil, domain.ErrResourceNotFound)
+
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/pullRequest/merge", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	mockService.AssertExpectations(t)
+}
+
+func TestSetUserIsActiveHandler_UserNotFound(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	requestBody := map[string]interface{}{
+		"user_id":   "nonexistent",
+		"is_active": false,
+	}
+
+	mockService.On("SetUserIsActive", mock.Anything, "nonexistent", false).
+		Return(nil, domain.ErrResourceNotFound)
+
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/users/setIsActive", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	mockService.AssertExpectations(t)
+}
+
+func TestGetReviewHandler_MissingUserID(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	// Нет query param user_id
+	req := httptest.NewRequest(http.MethodGet, "/users/getReview", nil)
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAddTeamHandler_DuplicateTeam(t *testing.T) {
+	mockService := mocks.NewAssignmentService(t)
+	router := setupTestRouter(mockService)
+
+	requestBody := map[string]interface{}{
+		"team_name": "backend",
+		"members": []map[string]interface{}{
+			{"user_id": "u1", "username": "Alice", "is_active": true},
+		},
+	}
+
+	mockService.On("CreateTeam", mock.Anything, mock.Anything).
+		Return(nil, domain.ErrTeamExists)
+
+	body, _ := json.Marshal(requestBody)
+	req := httptest.NewRequest(http.MethodPost, "/team/add", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-admin-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var response map[string]interface{}
+	_ = json.Unmarshal(w.Body.Bytes(), &response)
+	errorObj := response["error"].(map[string]interface{})
+	assert.Equal(t, "TEAM_EXISTS", errorObj["code"])
+
+	mockService.AssertExpectations(t)
+}

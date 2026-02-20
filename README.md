@@ -1,700 +1,221 @@
 # PR Reviewer Assignment Service
 
-> **Тестовое задание для стажёра Backend (осенняя волна 2025)**
-
-Микросервис для автоматического назначения ревьюверов на Pull Request'ы с управлением командами и участниками.
-
----
-
-## 📋 Содержание
-
-- [О проекте](#-о-проекте)
-- [Технологический стек](#-технологический-стек)
-- [Архитектура](#-архитектура)
-- [Быстрый старт](#-быстрый-старт)
-- [API документация](#-api-документация)
-- [Тестирование](#-тестирование)
-- [Мониторинг](#-мониторинг)
-- [Разработка](#-разработка)
-- [Вопросы и решения](#-вопросы-и-решения)
+Микросервис для автоматического назначения ревьюверов на Pull Request'ы.  
+Управляет командами разработчиков, отслеживает активность участников и обеспечивает бесперебойное code-review даже при уходе сотрудников — автоматически переназначает ревью на активных коллег.
 
 ---
 
-## 🎯 О проекте
+## Возможности
 
-Сервис автоматически назначает до 2 ревьюверов на Pull Request из команды автора, управляет активностью участников и обеспечивает переназначение ревью при деактивации пользователей.
-
-### Основные возможности
-
-✅ **Автоматическое назначение ревьюверов** - до 2 активных участников из команды автора  
-✅ **Управление командами** - создание команд и добавление участников  
-✅ **Управление активностью** - деактивация пользователей с автоматическим переназначением ревью  
-✅ **Идемпотентность операций** - безопасное повторное выполнение операций (merge)  
-✅ **Аутентификация** - Bearer токены для admin и user ролей  
-✅ **Мониторинг** - Prometheus метрики + Grafana дашборды  
-✅ **Высокая производительность** - поддержка 2000+ RPS при требовании 5 RPS
-
----
-
-## 🛠 Технологический стек
-
-### Backend
-- **Язык**: Go 1.25
-- **Web Framework**: Gin (HTTP роутер и middleware)
-- **ORM**: GORM (работа с БД)
-- **Миграции**: golang-migrate
-- **Логирование**: zerolog (структурированные JSON логи)
-- **Валидация**: go-playground/validator
-
-### База данных
-- **СУБД**: PostgreSQL 16
-- **Драйвер**: pgx/v5
-- **Connection pooling**: GORM автоматический пул
-
-### Мониторинг
-- **Метрики**: Prometheus client
-- **Визуализация**: Grafana
-- **Эндпоинты**: `/metrics` для Prometheus scraping
-
-### Инфраструктура
-- **Контейнеризация**: Docker + Docker Compose
-- **Тестирование**: testify, go-mock
-- **Нагрузочное тестирование**: Apache Bench (ab)
-- **Линтинг**: golangci-lint (28 линтеров)
+- **Автоматическое назначение** — при создании PR сервис выбирает до 2 ревьюверов из команды автора (случайным образом среди активных участников, исключая автора).
+- **Управление командами** — создание команд, добавление участников с указанием статуса активности.
+- **Деактивация участников** — поштучная или массовая деактивация с автоматическим переназначением открытых ревью.
+- **Переназначение ревьюверов** — ручная замена конкретного ревьювера или массовая замена всех неактивных ревьюверов PR.
+- **Идемпотентность** — повторный merge PR не вызывает ошибку, а возвращает текущее состояние.
+- **Аутентификация** — Bearer-токены для ролей `admin` (запись) и `user` (чтение).
+- **Мониторинг** — Prometheus-метрики, Grafana-дашборды, структурированные JSON-логи (Loki + Promtail).
+- **Graceful shutdown** — корректное завершение HTTP-сервера и закрытие соединения с БД.
+- **Database retry** — повторные попытки подключения к БД при старте (актуально для Docker).
+- **Config validation** — проверка обязательных переменных окружения при запуске.
 
 ---
 
-## 🏗 Архитектура
+## Технологический стек
+
+| Категория | Технология |
+|-----------|-----------|
+| Язык | Go 1.24 |
+| HTTP | Gin |
+| ORM | GORM + pgx/v5 |
+| Миграции | golang-migrate |
+| Логирование | zerolog (JSON) |
+| БД | PostgreSQL 16 |
+| Метрики | Prometheus client → Grafana |
+| Логи в Grafana | Loki + Promtail |
+| Контейнеризация | Docker (multi-stage build) + Docker Compose |
+| Тесты | testify + mockery |
+| Линтинг | golangci-lint (28 линтеров) |
+
+---
+
+## Архитектура
+
+Проект построен по принципам **Clean Architecture** с чётким разделением на слои:
+
+```
+HTTP Request
+     │
+ Middleware   ← auth, logging, metrics, recovery, CORS
+     │
+ Handlers     ← валидация, маппинг типизированных request/response
+     │
+ Service      ← бизнес-логика, транзакции (TxManager)
+     │
+ Storage      ← репозитории (GORM), Transaction Manager
+     │
+ PostgreSQL
+```
+
+**Паттерны:** Repository, Dependency Injection, Transaction Manager (Do/DoRead), Domain Errors.
 
 ### Структура проекта
 
 ```
-avitoTechAutumn2025/
-├── cmd/api/                   # Точка входа приложения
-│   └── main.go
-├── internal/                  # Внутренняя логика (не экспортируется)
-│   ├── api/                   # HTTP слой
-│   │   ├── handlers/          # HTTP обработчики
-│   │   ├── middleware/        # Middleware (auth, logging, metrics, recovery, cors)
-│   │   └── server/            # HTTP сервер
-│   ├── config/                # Конфигурация из env
-│   ├── domain/                # Бизнес-логика и интерфейсы
-│   │   ├── models.go          # Доменные модели
-│   │   ├── service.go         # Интерфейс сервиса
-│   │   └── errors.go          # Доменные ошибки
-│   ├── service/               # Реализация бизнес-логики
-│   │   ├── service.go         # Базовый сервис
-│   │   ├── team.go            # Логика команд
-│   │   ├── user.go            # Логика пользователей
-│   │   └── pullRequest.go     # Логика PR и назначения ревьюверов
-│   ├── storage/               # Слой данных
-│   │   └── gorm/              # GORM реализация
-│   │       ├── models.go      # БД модели
-│   │       ├── team.go        # Репозиторий команд
-│   │       ├── user.go        # Репозиторий пользователей
-│   │       ├── pullrequest.go # Репозиторий PR
-│   │       └── txmanager.go   # Менеджер транзакций
-│   ├── logger/                # Настройка логирования
-│   ├── metrics/               # Prometheus метрики
-│   └── mocks/                 # Моки для тестов (go generate)
-├── migrations/                # SQL миграции
-│   └── 001_init.up.sql
-├── tests/                     # Тесты
-│   ├── unit/                  # Юнит тесты (handlers, middleware, service)
-│   ├── integration/           # Интеграционные тесты
-│   ├── e2e/                   # End-to-end тесты
-│   └── load/                  # Нагрузочные тесты
-├── grafana/                   # Grafana дашборды и provisioning
-├── prometheus/                # Prometheus конфигурация
-├── docker-compose.yml         # Production окружение
-├── docker-compose.test.yml    # Тестовое окружение
-├── Dockerfile                 # Образ приложения
-├── Makefile                   # Команды для управления проектом
-├── golangci.yml              # Конфигурация линтера
-├── openapi.yml               # OpenAPI спецификация
-└── .env                      # Переменные окружения (создать из примера)
-```
-
-### Архитектурные паттерны
-
-- **Clean Architecture** - разделение на слои (handlers → service → storage)
-- **Repository Pattern** - абстракция работы с БД
-- **Dependency Injection** - внедрение зависимостей через конструкторы
-- **Transaction Manager** - централизованное управление транзакциями
-- **Domain-Driven Design** - доменные модели и ошибки
-
-### Слои приложения
-
-```
-HTTP Request
-     ↓
-[Middleware] ← auth, logging, metrics, recovery, cors
-     ↓
-[Handlers] ← валидация, маппинг запросов/ответов
-     ↓
-[Service] ← бизнес-логика, транзакции
-     ↓
-[Storage] ← работа с БД (GORM)
-     ↓
-PostgreSQL
+├── cmd/api/main.go              # Точка входа
+├── internal/
+│   ├── api/
+│   │   ├── handlers/            # HTTP-обработчики + типизированные mappers
+│   │   ├── middleware/          # Auth, Logger, Metrics, Recovery, CORS
+│   │   └── server/              # HTTP-сервер с graceful shutdown
+│   ├── config/                  # Конфигурация из env + Validate()
+│   ├── domain/                  # Модели, интерфейсы, доменные ошибки
+│   ├── service/                 # Бизнес-логика (team, user, pullRequest)
+│   ├── storage/gorm/            # GORM-репозитории + TxManager
+│   ├── logger/                  # zerolog setup
+│   ├── metrics/                 # Prometheus collectors
+│   └── mocks/                   # Моки (mockery)
+├── migrations/                  # SQL миграции (up + down)
+├── tests/
+│   ├── unit/                    # Unit-тесты (handlers, middleware, service, config)
+│   ├── integration/             # Интеграционные тесты (реальная БД)
+│   └── e2e/                     # End-to-end тесты (полный API-workflow)
+├── grafana/                     # Дашборды + provisioning (Prometheus, Loki)
+├── prometheus/                  # Конфиг Prometheus + алерты
+├── docker-compose.yml           # Production-окружение
+├── docker-compose.test.yml      # Тестовое окружение
+├── Dockerfile                   # Multi-stage build (golang:1.24-alpine → alpine:3.19)
+├── Makefile                     # Команды управления
+└── openapi.yml                  # OpenAPI 3.0 спецификация
 ```
 
 ---
 
-## 🚀 Быстрый старт
+## Быстрый старт
 
 ### Требования
 
-- Docker 20.10+
-- Docker Compose 1.29+
-- Go 1.25+ (для локальной разработки)
-- Make (опционально, для удобства)
+- Docker 20.10+ и Docker Compose 1.29+
+- Go 1.24+ (для локальной разработки и тестов)
 
-### 1. Клонирование репозитория
+### Запуск
 
 ```bash
 git clone https://github.com/FireFly4ik/avitoTechAutumn2025.git
 cd avitoTechAutumn2025
+
+# Создать .env по примеру
+cp .env.example .env
+
+# Запустить всё (API + PostgreSQL + Prometheus + Grafana + Loki)
+docker-compose up -d
 ```
 
-### 2. Настройка окружения
-
-Создайте файл `.env` в корне проекта:
+### Проверка
 
 ```bash
-# App
-APP_PORT=8080
-APP_PRODUCTION_TYPE=production
-APP_LOG_PATH=./logs/app.log
-
-# Database
-DB_HOST=db
-DB_PORT=5432
-DB_USER=avito
-DB_PASSWORD=avito_password
-DB_NAME=avito_tech
-DB_SSLMODE=disable
-
-# Auth tokens
-ADMIN_TOKEN=admin
-USER_TOKEN=user
-```
-
-### 3. Запуск сервиса
-
-#### Вариант 1: Docker Compose (рекомендуется)
-
-```bash
-# Запуск всего стека (API + PostgreSQL + Prometheus + Grafana)
-sudo docker-compose up -d
-
-# Проверка статуса
-sudo docker-compose ps
-
-# Просмотр логов
-sudo docker-compose logs -f api
-```
-
-#### Вариант 2: Make команда
-
-```bash
-make docker-up
-```
-
-### 4. Проверка работоспособности
-
-```bash
-# Проверка метрик (не требует аутентификации)
 curl http://localhost:8080/metrics
-
-# Создание тестовой команды (не требует аутентификации)
-curl -X POST http://localhost:8080/team/add \
-  -H "Content-Type: application/json" \
-  -d '{
-    "team_name": "backend-team",
-    "members": [
-      {"user_id": "u1", "username": "Alice", "is_active": true},
-      {"user_id": "u2", "username": "Bob", "is_active": true},
-      {"user_id": "u3", "username": "Charlie", "is_active": true}
-    ]
-  }'
-
-# Получение информации о команде (требует USER или ADMIN токен)
-curl http://localhost:8080/team/get?team_name=backend-team \
-  -H "Authorization: Bearer user"
 ```
 
-### 5. Доступ к сервисам
+### Сервисы
 
-| Сервис | URL | Описание |
-|--------|-----|----------|
-| API | http://localhost:8080 | REST API сервиса |
-| Metrics | http://localhost:8080/metrics | Prometheus метрики |
-| Grafana | http://localhost:3000 | Дашборды (admin/admin) |
-| Prometheus | http://localhost:9090 | Prometheus UI |
-| PostgreSQL | localhost:5433 | БД (avito/avito_password) |
-
----
-
-### Полная спецификация
-
-Подробная OpenAPI спецификация доступна в файле [`openapi.yml`](./openapi.yml)
+| Сервис | URL | Credentials |
+|--------|-----|-------------|
+| API | http://localhost:8080 | Bearer `admin` / `user` |
+| Swagger UI | http://localhost:8088 | — |
+| Grafana | http://localhost:3000 | admin / admin |
+| Prometheus | http://localhost:9090 | — |
+| PostgreSQL | localhost:5433 | avito / avito_password |
 
 ---
 
-## 🧪 Тестирование
+## API
 
-### Структура тестов
+Полная спецификация — [`openapi.yml`](./openapi.yml).
 
-- **Unit тесты** - тестирование отдельных компонентов (handlers, middleware, service)
-- **Integration тесты** - тестирование взаимодействия с реальной БД
-- **E2E тесты** - end-to-end тестирование всего API
-- **Load тесты** - нагрузочное тестирование производительности
+### Эндпоинты
 
-### Команды для запуска тестов
+| Метод | Путь | Роль | Описание |
+|-------|------|------|----------|
+| POST | `/team/add` | — | Создать команду с участниками |
+| GET | `/team/get?team_name=` | user | Получить информацию о команде |
+| POST | `/team/deactivate` | admin | Деактивировать участников команды |
+| POST | `/users/setIsActive` | admin | Изменить статус активности пользователя |
+| GET | `/users/getReview?user_id=` | user | PR, назначенные на пользователя |
+| POST | `/pullRequest/create` | admin | Создать PR с автоназначением ревьюверов |
+| POST | `/pullRequest/merge` | admin | Смержить PR (идемпотентно) |
+| POST | `/pullRequest/reassign` | admin | Переназначить одного ревьювера |
+| POST | `/pullRequest/reassignInactive` | admin | Переназначить всех неактивных ревьюверов PR |
+| GET | `/metrics` | — | Prometheus-метрики |
+| GET | `/openapi.yml` | — | OpenAPI 3.0 спецификация |
+
+---
+
+## Тестирование
 
 ```bash
-# Все тесты последовательно
-make test-all
-
-# Только unit тесты (быстро)
+# Unit-тесты (быстро, без зависимостей)
 make test-unit
 
-# Unit тесты с покрытием
+# Unit-тесты с покрытием
 make test-unit-cover
 
-# Integration тесты (автоматически поднимает тестовую БД)
+# Интеграционные тесты (автоматически поднимает тестовую БД)
 make test-integration
 
 # E2E тесты (автоматически поднимает тестовое окружение)
 make test-e2e
 
-# Нагрузочные тесты (требует запущенный API)
-make test-load
+# Все тесты последовательно
+make test-all
 ```
 
-### Результаты нагрузочного тестирования
+### Структура тестов
 
-#### Выполнение требований
-
-| Требование | Целевое значение | Фактическое | Статус |
-|------------|------------------|-------------|--------|
-| RPS | ≥ 5 | 3500-4300 | ✅ |
-| Время ответа P95 | < 300 мс | 2-13 мс | ✅ |
-| Success Rate | ≥ 99.9% | 100% | ✅ |
-
-#### Производительность по операциям
-
-| Операция | RPS | Среднее время | P95 |
-|----------|-----|---------------|-----|
-| GET /team/get | 4338 | 2.3 мс | 4 мс |
-| GET /users/getReview | 5435 | 1.8 мс | 3 мс |
-| POST /users/setIsActive | 3500 | 1.4 мс | 2 мс |
-| POST /pullRequest/create | 226 | 4.4 мс | 8 мс |
-
-Полный отчёт: [`tests/load/LOAD_TESTING.md`](./tests/load/LOAD_TESTING.md)
+- **Unit** — сервисный слой с моками репозиториев и TxManager, обработчики с моками сервиса, middleware, config validation.
+- **Integration** — реальная PostgreSQL через Docker, проверка всех слоёв вместе, изоляция через отдельную БД.
+- **E2E** — полный API-workflow через HTTP-запросы: создание команды → создание PR → деактивация → переназначение → merge.
 
 ---
 
-## 📊 Мониторинг
+## Мониторинг
 
-### Prometheus метрики
+После `docker-compose up -d` доступны:
 
-Сервис экспортирует метрики через эндпоинт `/metrics`:
+- **Prometheus** (http://localhost:9090) — сбор метрик `http_requests_total`, `http_request_duration_seconds`, `db_queries_total`, `service_operations_total`.
+- **Grafana** (http://localhost:3000) — преднастроенные дашборды:
+  - HTTP Performance — RPS, latency, status codes
+  - Database Performance — query time
+  - Service Teams / Pull Requests — бизнес-метрики
+  - Application Logs — real-time JSON-логи через Loki
 
-- **HTTP метрики**: `http_requests_total`, `http_request_duration_seconds`
-- **Database метрики**: `db_queries_total`, `db_query_duration_seconds`
-- **Service метрики**: `service_operations_total`, `service_operation_duration_seconds`
+Логи пишутся в JSON-формате одновременно в stdout (Docker logs) и в файл `./logs/app.log` (доступен на хосте через volume).
 
-### Grafana дашборды
+---
 
-Преднастроенные дашборды доступны после запуска:
-
-1. **HTTP Performance** - метрики HTTP запросов, RPS, latency
-2. **Database Performance** - метрики БД, query time, pool connections
-3. **Service Teams** - статистика по командам и пользователям
-4. **Pull Requests** - статистика по PR и назначениям
-5. **Application Logs** - визуализация JSON логов из файла в реальном времени (Loki + Promtail)
-
-Доступ: http://localhost:3000 (admin/admin)
-
-#### Просмотр логов в Grafana
-
-Логи из `./logs/app.log` автоматически индексируются через **Loki** и отображаются в Grafana:
-
-- **Фильтрация по request_id** - отследить весь путь конкретного запроса
-- **Фильтрация по level** - error, warn, info, debug
-- **Поиск по тексту** - найти любую информацию в логах
-- **Real-time обновление** - логи появляются автоматически каждые 5 секунд
+## Make-команды
 
 ```bash
-# Открыть дашборд логов
-open http://localhost:3000/d/logs-dashboard
+make help              # Список всех команд
+make docker-up         # Запуск production
+make docker-down       # Остановка
+make test-unit         # Unit-тесты
+make test-all          # Все тесты
+make lint              # Линтер (golangci-lint)
+make pre-commit        # fmt + lint + unit-тесты
+make mocks             # Генерация моков
 ```
-
-### Просмотр логов
-
-#### Docker Logs (stdout)
-
-Логи доступны через Docker:
-
-```bash
-# Следить за логами в реальном времени
-make docker-logs
-# или
-docker-compose logs -f api
-
-# Последние 100 строк
-make docker-logs-tail
-```
-
-#### Файловые логи
-
-Благодаря volume mapping в `docker-compose.yml`, логи также сохраняются в `./logs/app.log`:
-
-```bash
-# Следить за файлом логов
-make logs-file
-# или
-tail -f logs/app.log
-
-# Последние 100 строк
-make logs-file-tail
-
-# Поиск в логах
-make logs-search SEARCH="error"
-make logs-search SEARCH="user_id=u1"
-
-# Очистка старых логов
-make clean-logs
-```
-
-#### Преимущества двойного логирования
-
-✅ **Docker logs** - быстрый доступ через `docker-compose logs`  
-✅ **Файловые логи** - сохраняются на диске, переживают рестарты контейнера  
-✅ **JSON формат** - структурированные логи легко парсить  
-✅ **Rotation готов** - можно подключить logrotate для ротации файлов
 
 ---
 
-## 💻 Разработка
-
-### Установка зависимостей
-
-```bash
-# Go модули
-make deps
-
-# Линтер (если не установлен)
-brew install golangci-lint  # macOS
-```
-
-### Локальная разработка
-
-```bash
-# Запуск БД
-docker-compose up -d db
-
-# Настройка .env для локальной разработки
-# Изменить DB_HOST=localhost
-
-# Запуск API локально
-make run
-
-# Или через go
-go run cmd/api/main.go
-```
-
-### Качество кода
-
-```bash
-# Линтинг
-make lint
-
-# Линтинг с автофиксом
-make lint-fix
-
-# Форматирование кода
-make fmt
-
-# Go vet проверка
-make vet
-
-# Проверка перед коммитом
-make pre-commit
-```
-
-### Генерация моков
-
-```bash
-# Генерация всех моков
-make mocks
-
-# Моки будут созданы в internal/mocks/
-```
-
-### Конфигурация линтера
-
-В проекте используется **golangci-lint** с 28 включенными линтерами:
-
-**Основные линтеры:**
-- `errcheck`, `gosimple`, `govet`, `staticcheck` - базовые проверки
-- `gofmt`, `goimports` - форматирование
-- `gosec` - проверка безопасности
-- `gocognit`, `cyclop`, `funlen` - метрики сложности
-- `bodyclose`, `rowserrcheck`, `sqlclosecheck` - проверка закрытия ресурсов
-- `errorlint`, `wrapcheck` - работа с ошибками
-
-Полная конфигурация: [`golangci.yml`](./golangci.yml)
-
----
-
-## ❓ Вопросы и решения
-
-> Список вопросов, возникших при реализации, и принятые архитектурные решения
-
-### 1. **Флаг `needMoreReviewers` не реализован**
-
-**Вопрос:** В ТЗ упоминается флаг `needMoreReviewers` для PR, но его точное назначение не описано.
-
-**Решение:** Флаг **не реализован**, т.к.:
-- В ТЗ сказано, что при создании PR назначаются до 2 ревьюверов, а не более, что может быть связано с этим флагом
-
----
-
-### 2. **Аутентификация реализована через Bearer токены**
-
-**Вопрос:** ТЗ требует разделение прав, но не указывает механизм аутентификации.
-
-**Решение:** Реализована простая Bearer token аутентификация:
-- `ADMIN_TOKEN` - полный доступ ко всем операциям
-- `USER_TOKEN` - доступ только к операциям чтения
-- Токены передаются в заголовке `Authorization
-- В коде установлены заглушки для токенов в `.env`, так как безопасность не является приоритетом тестового задания
-
----
-
-### 3. **Идемпотентность операции merge**
-
-**Вопрос:** Как обеспечить идемпотентность merge согласно ТЗ?
-
-**Решение:** Реализована проверка текущего статуса:
-```go
-if pr.Status == domain.StatusMerged {
-// Возвращаем текущее состояние без ошибки
-return pr, nil
-}
-```
-
-**Преимущества:**
-- Повторный вызов merge не вызывает ошибку и не обновляет время слияния
-- Возвращается актуальное состояние PR
-- Операция безопасна при сетевых повторах
-
----
-
-### 4. **Структура базы данных**
-
-**Решение:** Использована классическая реляционная модель:
-
-```sql
-teams
-├── team_name (PK)
-├── created_at
-└── updated_at
-
-users
-├── user_id (PK)
-├── username
-├── team_name (FK → teams)
-├── is_active
-├── created_at
-└── updated_at
-
-pull_requests
-├── pull_request_id (PK)
-├── pull_request_name
-├── author_id (FK → users)
-├── status (ENUM: OPEN, MERGED)
-├── created_at
-├── updated_at
-└── merged_at
-
-pull_request_reviewers (связь многие-ко-многим)
-├── pull_request_id (FK → pull_requests)
-├── reviewer_id (FK → users)
-└── PRIMARY KEY (pull_request_id, reviewer_id)
-```
-
-**Ключевые индексы:**
-- `idx_pr_reviewers_reviewer` - быстрый поиск PR по ревьюверу
-- `idx_pr_status` - фильтрация открытых PR
-- `idx_users_team_active` - выборка активных участников команды
-- `idx_pr_author` - поиск PR по автору
-
-**Триггеры:**
-- Автоматическое обновление `updated_at` для всех таблиц
-
----
-
-### 5. **Обработка ошибок**
-
-**Вопрос:** Как унифицировать обработку ошибок на всех слоях?
-
-**Решение:** Реализована трехуровневая система ошибок:
-
-1. **Storage errors** (`internal/storage/errors.go`):
-```go
-var (
-ErrNotFound      = errors.New("not found")
-ErrAlreadyExists = errors.New("already exists")
-ErrConflict      = errors.New("conflict")
-)
-```
-
-2. **Domain errors** (`internal/domain/errors.go`):
-```go
-var (
-ErrResourceNotFound = NewError(404, "NOT_FOUND", "resource not found")
-ErrPRExists        = NewError(400, "PR_EXISTS", "PR already exists")
-ErrTeamExists      = NewError(400, "TEAM_EXISTS", "team already exists")
-ErrReassignOnMerged = NewError(400, "PR_MERGED", "cannot modify merged PR")
-)
-```
-
-3. **HTTP errors** (`internal/api/handlers/errors.go`):
-```go
-func (h *Handler) handleError(c *gin.Context, err error) {
-if domainErr, ok := err.(*domain.Error); ok {
-c.JSON(domainErr.HTTPCode, gin.H{
-"error": gin.H{
-"code":    domainErr.Code,
-"message": domainErr.Message,
-},
-})
-}
-}
-```
-
-**Преимущества:**
-- Четкое разделение ответственности
-- Соответствие OpenAPI спецификации
-- Легкость тестирования
-
-**Обработка HTTP статус кодов:**
-- **400 Bad Request** - валидация входных данных (неверный JSON, отсутствующие поля, невалидные значения) (было добавлено дополнительно)
-- **401 Unauthorized** - отсутствует или неверный токен аутентификации
-- **403 Forbidden** - недостаточно прав (требуется ADMIN токен)
-- **404 Not Found** - ресурс не найден (команда, пользователь, PR)
-- **500 Internal Server Error** - внутренняя ошибка сервера, логируется с полным стектрейсом (было добавлено дополнительно)
-
-**Валидация запросов:**
-```go
-// Пример валидации в handlers
-if err := c.ShouldBindJSON(&req); err != nil {
-    c.JSON(400, gin.H{"error": gin.H{
-        "code": "INVALID_REQUEST",
-        "message": "invalid request body",
-    }})
-    return
-}
-```
-
-Все ошибки валидации и бизнес-логики возвращают структурированный JSON согласно OpenAPI спецификации.
-
----
-
-### 6. **Миграции БД**
-
-**Вопрос:** Как применяются миграции при `docker-compose up`?
-
-**Решение:** В коде при старте приложения и подключении к БД вызывается функция миграций.
-
----
-
-### 7. **Логирование**
-
-**Решение:** Использован **zerolog** для структурированных логов:
-
-```go
-log.Info().
-Str("team_name", teamName).
-Str("operation", "GetTeam").
-Msg("fetching team")
-
-log.Error().
-Err(err).
-Str("user_id", userID).
-Msg("failed to deactivate user")
-```
-
-**Конфигурация:**
-- Production: JSON логи в файл
-- Development: Pretty console логи
-- Уровни: Info, Warn, Error
-
-**Middleware логирования:**
-- Все HTTP запросы
-- Время выполнения
-- HTTP метод, путь, статус
-- Ошибки и stacktrace
-
----
-
-### 8. **Тестирование**
-
-**Решение:** Реализованы все типы тестов:
-
-#### Unit тесты
-- Handlers с моками сервиса
-- Middleware (auth, logging, metrics)
-- Service логика с моками репозиториев
-- Покрытие: ~75%
-
-#### Integration тесты
-- Реальная тестовая БД (PostgreSQL в Docker)
-- Тестирование всех слоев вместе
-- Изоляция через отдельную БД
-
-#### E2E тесты
-- Полный API workflow
-- Реальные HTTP запросы
-- Проверка OpenAPI контракта
-
-#### Load тесты
-- Apache Bench (ab)
-- Скрипты для автоматизации
-- Генерация отчетов
-
-**Моки:**
-- Генерируются через `go generate`
-- Используется mockery/testify
-- Храниться в `internal/mocks/`
-
----
-
-### 9. **Мониторинг и метрики**
-
-**Решение:** Полный стек Prometheus + Grafana:
-
-#### Prometheus метрики
-```go
-// HTTP метрики
-http_requests_total{method, path, status}
-http_request_duration_seconds{method, path}
-
-// Database метрики
-db_queries_total{operation, table}
-db_query_duration_seconds{operation, table}
-
-// Service метрики
-service_operations_total{operation, status}
-service_operation_duration_seconds{operation}
-```
-
-#### Grafana дашборды
-- HTTP Performance - RPS, latency, status codes
-- Database Performance - query time, pool usage
-- Service Teams - статистика команд и пользователей
-- Pull Requests - метрики PR и назначений
+## Принятые решения
+
+| Вопрос | Решение |
+|--------|---------|
+| Аутентификация | Bearer-токены (`ADMIN_TOKEN`, `USER_TOKEN`) — достаточно для демо, легко заменить на JWT |
+| Идемпотентность merge | Повторный вызов не ошибка — возвращает текущее состояние PR |
+| PR без ревьюверов | Graceful degradation — PR создаётся, логируется warning |
+| Транзакции | `TxManager.Do` / `DoRead` — единая точка управления, изоляция в сервисном слое |
+| Ошибки | 3 уровня: storage → domain (с HTTP-кодом) → handler mapping |
+| Миграции | golang-migrate, применяются автоматически при старте приложения |
+| Docker | Multi-stage build: `golang:1.24-alpine` → `alpine:3.19` (минимальный образ) |
+| Логи | zerolog JSON → stdout + файл, индексация через Loki в Grafana |

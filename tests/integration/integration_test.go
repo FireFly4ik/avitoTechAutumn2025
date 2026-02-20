@@ -5,12 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 
 	"avitoTechAutumn2025/internal/api/handlers"
 	"avitoTechAutumn2025/internal/config"
@@ -62,10 +63,7 @@ func TestMain(m *testing.M) {
 	}
 
 	// Создаём TxManager и сервис
-	txManager, err := storageGorm.NewTxManager(testDB)
-	if err != nil {
-		panic(fmt.Sprintf("failed to create tx manager: %v", err))
-	}
+	txManager := storageGorm.NewTxManager(testDB)
 	testService = service.New(txManager)
 
 	// Создаём роутер
@@ -971,13 +969,12 @@ func TestReassignInactive_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, pr.AssignedReviewers)
 
-	// Деактивируем некоторых ревьюверов
+	// Деактивируем всех назначенных ревьюверов
+	deactivatedReviewers := make([]string, 0, len(pr.AssignedReviewers))
 	for _, reviewerID := range pr.AssignedReviewers {
-		if reviewerID == "active-1" || reviewerID == "active-2" {
-			// Деактивируем
-			_, err := testService.SetUserIsActive(ctx, reviewerID, false)
-			require.NoError(t, err)
-		}
+		_, err := testService.SetUserIsActive(ctx, reviewerID, false)
+		require.NoError(t, err)
+		deactivatedReviewers = append(deactivatedReviewers, reviewerID)
 	}
 
 	// Переназначаем неактивных
@@ -1008,8 +1005,8 @@ func TestReassignInactive_Success(t *testing.T) {
 		newID := d["new_reviewer_id"]
 		wasRemoved := d["was_removed"].(bool)
 
-		// Старый должен быть неактивным
-		assert.Contains(t, []string{"active-1", "active-2"}, oldID)
+		// Старый должен быть из деактивированных ревьюверов
+		assert.Contains(t, deactivatedReviewers, oldID)
 
 		// Если не удалён - должен быть новый
 		if !wasRemoved {

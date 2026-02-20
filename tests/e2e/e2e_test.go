@@ -66,10 +66,7 @@ func TestMain(m *testing.M) {
 	}
 
 	// Создаём TxManager и сервис
-	txManager, err := storageGorm.NewTxManager(testDB)
-	if err != nil {
-		panic(fmt.Sprintf("failed to create tx manager: %v", err))
-	}
+	txManager := storageGorm.NewTxManager(testDB)
 	testService = service.New(txManager)
 
 	// Создаём и запускаем HTTP сервер в отдельной горутине

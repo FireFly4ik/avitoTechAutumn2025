@@ -79,12 +79,14 @@ type ReassignPullRequestResult struct {
 // DeactivateTeamInput - входные данные для массовой деактивации команды
 type DeactivateTeamInput struct {
 	TeamName string
+	UserIDs  []string // Конкретные ID пользователей для деактивации
 }
 
 // DeactivateTeamResult - результат массовой деактивации команды
 type DeactivateTeamResult struct {
 	TeamName             string
 	DeactivatedUserCount int
+	ReassignedCount      int // Количество переназначенных ревью
 }
 
 // ReassignInactiveInput - входные данные для переназначения неактивных ревьюверов PR

@@ -26,7 +26,6 @@ run: ## Запустить приложение локально
 clean: ## Очистить сгенерированные файлы
 	@echo "Очистка..."
 	rm -f $(BINARY_NAME)
-	rm -rf tests/load/results/*
 	go clean
 
 ##@ Docker команды
@@ -99,18 +98,7 @@ test-e2e: docker-test-up ## Запустить E2E тесты (автомати�
 	@$(DOCKER_COMPOSE_TEST) down
 	@echo "$(GREEN)✅ E2E тесты завершены$(NC)"
 
-test-load: ## Запустить нагрузочные тесты (требует запущенный API)
-	@echo "$(YELLOW)Запуск нагрузочных тестов...$(NC)"
-	@if ! curl -s http://localhost:8080/metrics > /dev/null 2>&1; then \
-		echo "$(YELLOW)API не запущен, поднимаю production окружение...$(NC)"; \
-		$(DOCKER_COMPOSE) up -d; \
-		sleep 5; \
-	fi
-	bash tests/load/run_load_tests.sh
-	bash tests/load/generate_report.sh
-	@echo "$(GREEN)✅ Отчёт по нагрузке: tests/load/LOAD_TESTING.md$(NC)"
-
-test-all: ## Запустить ВСЕ тесты последовательно (unit -> integration -> e2e -> load)
+test-all: ## Запустить ВСЕ тесты последовательно (unit -> integration -> e2e)
 	@echo "$(YELLOW)========================================$(NC)"
 	@echo "$(YELLOW)  ЗАПУСК ВСЕХ ТЕСТОВ$(NC)"
 	@echo "$(YELLOW)========================================$(NC)"

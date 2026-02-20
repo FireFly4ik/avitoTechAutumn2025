@@ -23,7 +23,11 @@ func secureRandomInt(max int) (int, error) {
 	return int(n.Int64()), nil
 }
 
-// CreatePullRequest создаёт новый pull request с автоматическим назначением ревьюверов
+// CreatePullRequest создаёт новый pull request с автоматическим назначением ревьюверов.
+//
+// Graceful degradation: если в команде автора нет других активных участников,
+// PR создаётся без ревьюверов (AssignedReviewers будет пустым). Это не ошибка —
+// ревьюверов можно назначить позже через ReassignInactiveReviewers.
 func (s *Service) CreatePullRequest(outerCtx context.Context, input *domain.CreatePullRequestInput) (*domain.PullRequest, error) {
 	const op = "service.CreatePullRequest"
 	requestID := logger.GetRequestID(outerCtx)
@@ -108,6 +112,15 @@ func (s *Service) CreatePullRequest(outerCtx context.Context, input *domain.Crea
 			Int("reviewers_count", len(reviewers)).
 			Msg("successfully created pull request with reviewers in transaction")
 
+		if len(reviewers) == 0 {
+			log.Warn().
+				Str("request_id", requestID).
+				Str("layer", "service").
+				Str("pull_request_id", pr.ID).
+				Str("author_id", input.AuthorID).
+				Msg("PR created without reviewers — no active team members available (graceful degradation)")
+		}
+
 		return nil
 	})
 
@@ -127,6 +140,7 @@ func (s *Service) MergePullRequest(outerCtx context.Context, input *domain.Merge
 	const op = "service.MergePullRequest"
 	requestID := logger.GetRequestID(outerCtx)
 	var pr *domain.PullRequest
+	wasAlreadyMerged := false
 
 	start := time.Now()
 	defer func() {
@@ -154,6 +168,7 @@ func (s *Service) MergePullRequest(outerCtx context.Context, input *domain.Merge
 				Str("pull_request_id", input.PullRequestID).
 				Msg("PR already merged, returning current state (idempotent)")
 			pr = existingPR
+			wasAlreadyMerged = true
 			return nil
 		}
 
@@ -174,15 +189,18 @@ func (s *Service) MergePullRequest(outerCtx context.Context, input *domain.Merge
 		return nil, s.formatError(outerCtx, op, err)
 	}
 
-	// Увеличиваем счетчики метрик
-	metrics.PRMergedTotal.Inc()
-	metrics.PROpenCount.Dec()
+	// Обновляем метрики только при реальном изменении статуса, не при идемпотентном ответе
+	if !wasAlreadyMerged {
+		metrics.PRMergedTotal.Inc()
+		metrics.PROpenCount.Dec()
+	}
 
 	log.Info().
 		Str("request_id", requestID).
 		Str("layer", "service").
 		Str("pull_request_id", pr.ID).
 		Str("status", string(pr.Status)).
+		Bool("was_already_merged", wasAlreadyMerged).
 		Msg("successfully merged pull request")
 
 	return pr, nil

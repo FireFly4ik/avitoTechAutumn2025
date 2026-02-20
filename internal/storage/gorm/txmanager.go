@@ -6,7 +6,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 )
 
@@ -15,157 +14,74 @@ type txManager struct {
 	db *gorm.DB
 }
 
-// NewTxManager создаёт новый менеджер транзакций для GORM
-func NewTxManager(db *gorm.DB) (storage.TxManager, error) {
-	// Получаем *sql.DB для мониторинга connection pool
-	sqlDB, err := db.DB()
-	if err != nil {
-		return nil, err
-	}
-
-	// Запускаем коллектор метрик connection pool
-	stopCh := make(chan struct{})
-	go metrics.StartDBStatsCollector(sqlDB, 5*time.Second, stopCh)
-
-	// Запускаем горутину для пересчёта метрик команды/юзера из БД
-	go func() {
-		ticker := time.NewTicker(5 * time.Second)
-		defer ticker.Stop()
-		type teamRow struct {
-			TeamName string
-			Count    int
-			Active   int
-		}
-		type userRow struct {
-			UserID string
-			Count  int
-		}
-
-		for {
-			select {
-			case <-ticker.C:
-				// Получаем список всех команд из таблицы teams
-				var allTeamNames []string
-				if err := db.Raw(`SELECT team_name FROM teams`).Scan(&allTeamNames).Error; err != nil {
-					log.Error().Err(err).Msg("failed to query all team names")
-					continue
-				}
-
-				// Создаём map для быстрого доступа к актуальным данным команд
-				teamData := make(map[string]teamRow)
-
-				// Пересчитываем членов команд и активных
-				var teams []teamRow
-				// SQL: count and sum active per team
-				err := db.Raw(`SELECT team_name, COUNT(*) as count, SUM(CASE WHEN is_active THEN 1 ELSE 0 END) as active FROM users GROUP BY team_name`).Scan(&teams).Error
-				if err != nil {
-					log.Error().Err(err).Msg("failed to query team membership counts")
-					continue
-				}
-
-				// Заполняем map актуальными данными
-				for _, t := range teams {
-					teamData[t.TeamName] = t
-				}
-
-				// Обновляем метрики для всех команд из таблицы teams
-				for _, teamName := range allTeamNames {
-					if data, exists := teamData[teamName]; exists {
-						// У команды есть пользователи
-						metrics.TeamMembersCount.WithLabelValues(teamName).Set(float64(data.Count))
-						metrics.TeamActiveMembersCount.WithLabelValues(teamName).Set(float64(data.Active))
-						log.Debug().
-							Str("team_name", teamName).
-							Int("total", data.Count).
-							Int("active", data.Active).
-							Msg("updated team metrics")
-					} else {
-						// У команды нет пользователей - устанавливаем 0
-						metrics.TeamMembersCount.WithLabelValues(teamName).Set(0)
-						metrics.TeamActiveMembersCount.WithLabelValues(teamName).Set(0)
-						log.Debug().
-							Str("team_name", teamName).
-							Msg("set team metrics to 0 (no members)")
-					}
-				}
-
-				// Пересчитываем назначения review по пользователям
-				var users []userRow
-				err = db.Raw(`SELECT reviewer_id as user_id, COUNT(*) as count FROM pull_request_reviewers GROUP BY reviewer_id`).Scan(&users).Error
-				if err != nil {
-					log.Error().Err(err).Msg("failed to query review assignments counts")
-				} else {
-					// Сбрасываем метрику перед обновлением
-					metrics.UserReviewAssignmentsCount.Reset()
-
-					for _, u := range users {
-						metrics.UserReviewAssignmentsCount.WithLabelValues(u.UserID).Set(float64(u.Count))
-					}
-				}
-
-			case <-stopCh:
-				log.Info().Msg("stopping metrics reconciliation goroutine")
-				return
-			}
-		}
-	}()
-
-	return &txManager{db: db}, nil
+// NewTxManager создаёт новый менеджер транзакций для GORM.
+// Не запускает фоновых горутин — для метрик используйте metrics.NewReconciler отдельно.
+func NewTxManager(db *gorm.DB) storage.TxManager {
+	return &txManager{db: db}
 }
 
-// Do выполняет функцию внутри транзации с автоматическим commit/rollback
+// Do выполняет функцию внутри транзакции с автоматическим commit/rollback.
+// Используется для операций записи.
 func (tm *txManager) Do(ctx context.Context, fn func(ctx context.Context, tx storage.Tx) error) error {
 	start := time.Now()
 
-	err := tm.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		txWrapper := &transaction{
-			db: tx,
-		}
+	err := tm.db.WithContext(ctx).Transaction(func(gormTx *gorm.DB) error {
+		tx := newTransaction(gormTx)
 
-		err := fn(ctx, txWrapper)
-		if err != nil {
-			// GORM автоматически сделает ROLLBACK
+		if err := fn(ctx, tx); err != nil {
 			metrics.DBTransactionTotal.WithLabelValues("error").Inc()
 			return err
 		}
 
-		// GORM автоматически сделает COMMIT
 		metrics.DBTransactionTotal.WithLabelValues("success").Inc()
 		return nil
 	})
 
-	// Записываем длительность транзакции
 	metrics.DBTransactionDuration.Observe(time.Since(start).Seconds())
 
 	return err
 }
 
-// transaction - обёртка над gorm.DB, реализует storage.Tx
+// DoRead выполняет функцию без явной транзакции.
+// Используется для read-only операций, чтобы избежать лишнего BEGIN/COMMIT overhead.
+func (tm *txManager) DoRead(ctx context.Context, fn func(ctx context.Context, tx storage.Tx) error) error {
+	tx := newTransaction(tm.db.WithContext(ctx))
+	return fn(ctx, tx)
+}
+
+// transaction — обёртка над gorm.DB, реализует storage.Tx.
+// Репозитории создаются лениво и кэшируются на время жизни транзакции.
 type transaction struct {
-	db *gorm.DB
+	db     *gorm.DB
+	prRepo storage.PullRequestRepository
+	uRepo  storage.UserRepository
+	tRepo  storage.TeamRepository
 }
 
-// PullRequestRepo возвращает репозиторий PR в рамках транзакции
+func newTransaction(db *gorm.DB) *transaction {
+	return &transaction{db: db}
+}
+
+// PullRequestRepo возвращает репозиторий PR (кэшируется)
 func (t *transaction) PullRequestRepo() storage.PullRequestRepository {
-	return NewPullRequestRepository(t.db)
+	if t.prRepo == nil {
+		t.prRepo = NewPullRequestRepository(t.db)
+	}
+	return t.prRepo
 }
 
-// UserRepo возвращает репозиторий пользователей в рамках транзакции
+// UserRepo возвращает репозиторий пользователей (кэшируется)
 func (t *transaction) UserRepo() storage.UserRepository {
-	return NewUserRepository(t.db)
+	if t.uRepo == nil {
+		t.uRepo = NewUserRepository(t.db)
+	}
+	return t.uRepo
 }
 
-// TeamRepo возвращает репозиторий команд в рамках транзакции
+// TeamRepo возвращает репозиторий команд (кэшируется)
 func (t *transaction) TeamRepo() storage.TeamRepository {
-	return NewTeamRepository(t.db)
-}
-
-// Commit не нужен, так как GORM автоматически коммитит
-func (t *transaction) Commit() error {
-	return nil
-}
-
-// Rollback не нужен, так как GORM автоматически откатывает при ошибке
-func (t *transaction) Rollback() error {
-	return nil
+	if t.tRepo == nil {
+		t.tRepo = NewTeamRepository(t.db)
+	}
+	return t.tRepo
 }

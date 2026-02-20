@@ -1,12 +1,12 @@
 package handlers
 
 import (
-	"avitoTechAutumn2025/internal/api"
 	"avitoTechAutumn2025/internal/api/middleware"
 	"avitoTechAutumn2025/internal/domain"
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
-	"net/http"
 )
 
 // CreatePullRequest обрабатывает создание PR с автоматическим назначением ревьюверов
@@ -18,18 +18,8 @@ func (h *Handler) CreatePullRequest(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Error().
-			Err(err).
-			Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).
-			Str("layer", "handler").
-			Msg("failed to parse request")
-
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Error: api.Error{
-				Code:    api.ErrCodeInvalidRequest,
-				Message: "Failed to parse request: " + err.Error(),
-			},
-		})
+		log.Error().Err(err).Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).Str("layer", "handler").Msg("failed to parse request")
+		handleValidationError(c, "Failed to parse request: "+err.Error())
 		return
 	}
 
@@ -60,7 +50,7 @@ func (h *Handler) CreatePullRequest(c *gin.Context) {
 		Int("reviewers_assigned", len(pr.AssignedReviewers)).
 		Msg("successfully created pull request")
 
-	c.JSON(http.StatusCreated, map[string]interface{}{
+	c.JSON(http.StatusCreated, gin.H{
 		"pr": mapPullRequestToAPI(pr),
 	})
 }
@@ -72,18 +62,8 @@ func (h *Handler) MergePullRequest(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Error().
-			Err(err).
-			Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).
-			Str("layer", "handler").
-			Msg("failed to parse request")
-
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Error: api.Error{
-				Code:    api.ErrCodeInvalidRequest,
-				Message: "Failed to parse request: " + err.Error(),
-			},
-		})
+		log.Error().Err(err).Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).Str("layer", "handler").Msg("failed to parse request")
+		handleValidationError(c, "Failed to parse request: "+err.Error())
 		return
 	}
 
@@ -110,7 +90,7 @@ func (h *Handler) MergePullRequest(c *gin.Context) {
 		Str("status", string(pr.Status)).
 		Msg("successfully merged pull request")
 
-	c.JSON(http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"pr": mapPullRequestToAPI(pr),
 	})
 }
@@ -123,18 +103,8 @@ func (h *Handler) ReassignPullRequest(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Error().
-			Err(err).
-			Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).
-			Str("layer", "handler").
-			Msg("failed to parse request")
-
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Error: api.Error{
-				Code:    api.ErrCodeInvalidRequest,
-				Message: "Failed to parse request: " + err.Error(),
-			},
-		})
+		log.Error().Err(err).Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).Str("layer", "handler").Msg("failed to parse request")
+		handleValidationError(c, "Failed to parse request: "+err.Error())
 		return
 	}
 
@@ -164,7 +134,7 @@ func (h *Handler) ReassignPullRequest(c *gin.Context) {
 		Str("new_reviewer_id", result.ReplacedBy).
 		Msg("successfully reassigned pull request reviewer")
 
-	c.JSON(http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"pr":          mapPullRequestToAPI(&result.PullRequest),
 		"replaced_by": result.ReplacedBy,
 	})
@@ -177,18 +147,8 @@ func (h *Handler) ReassignInactiveReviewers(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Error().
-			Err(err).
-			Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).
-			Str("layer", "handler").
-			Msg("failed to parse request")
-
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Error: api.Error{
-				Code:    api.ErrCodeInvalidRequest,
-				Message: "Failed to parse request: " + err.Error(),
-			},
-		})
+		log.Error().Err(err).Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).Str("layer", "handler").Msg("failed to parse request")
+		handleValidationError(c, "Failed to parse request: "+err.Error())
 		return
 	}
 
@@ -208,14 +168,7 @@ func (h *Handler) ReassignInactiveReviewers(c *gin.Context) {
 		return
 	}
 
-	reassignments := make([]map[string]interface{}, len(result.ReassignmentDetails))
-	for i, detail := range result.ReassignmentDetails {
-		reassignments[i] = map[string]interface{}{
-			"old_reviewer_id": detail.OldReviewerID,
-			"new_reviewer_id": detail.NewReviewerID,
-			"was_removed":     detail.WasRemoved,
-		}
-	}
+	reassignments := mapReassignmentDetailsToAPI(result.ReassignmentDetails)
 
 	log.Info().
 		Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).
@@ -224,7 +177,7 @@ func (h *Handler) ReassignInactiveReviewers(c *gin.Context) {
 		Int("reassigned_count", len(result.ReassignmentDetails)).
 		Msg("successfully reassigned inactive reviewers")
 
-	c.JSON(http.StatusOK, map[string]interface{}{
+	c.JSON(http.StatusOK, gin.H{
 		"pull_request_id":      result.PullRequestID,
 		"reassignment_details": reassignments,
 	})

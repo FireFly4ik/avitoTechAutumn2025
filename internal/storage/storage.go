@@ -10,10 +10,15 @@ import (
 //
 //go:generate mockery --name=TxManager --output=../mocks --outpkg=mocks --filename=tx_manager_mock.go
 type TxManager interface {
-	// Do выполняет функцию fn внутри транзакции
-	// Если fn возвращает ошибку, транзакция откатывается
-	// Иначе транзакция коммитится
+	// Do выполняет функцию fn внутри транзакции.
+	// Если fn возвращает ошибку, транзакция откатывается.
+	// Иначе транзакция коммитится.
+	// Используется для операций записи.
 	Do(ctx context.Context, fn func(ctx context.Context, tx Tx) error) error
+
+	// DoRead выполняет функцию fn без явной транзакции.
+	// Используется для read-only операций, чтобы избежать лишнего BEGIN/COMMIT overhead.
+	DoRead(ctx context.Context, fn func(ctx context.Context, tx Tx) error) error
 }
 
 // Tx представляет транзакцию с доступом к репозиториям
@@ -52,6 +57,9 @@ type PullRequestRepository interface {
 
 	// GetInactiveReviewers возвращает список неактивных ревьюверов для данного PR
 	GetInactiveReviewers(ctx context.Context, prID string) ([]string, error)
+
+	// GetOpenPRsByReviewers возвращает список открытых PR, где указанные пользователи являются ревьюверами
+	GetOpenPRsByReviewers(ctx context.Context, reviewerIDs []string) ([]string, error)
 }
 
 // UserRepository определяет операции с пользователями
@@ -83,4 +91,7 @@ type TeamRepository interface {
 
 	// DeactivateAllMembers деактивирует всех участников команды (batch update)
 	DeactivateAllMembers(ctx context.Context, teamName string) (int, error)
+
+	// DeactivateMembers деактивирует указанных участников команды
+	DeactivateMembers(ctx context.Context, teamName string, userIDs []string) (int, error)
 }

@@ -3,6 +3,8 @@ package gorm
 import (
 	"avitoTechAutumn2025/internal/config"
 	"fmt"
+	"time"
+
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -10,7 +12,12 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-	"time"
+)
+
+const (
+	maxRetries = 10
+	baseDelay  = 1 * time.Second
+	maxDelay   = 30 * time.Second
 )
 
 func ConnectDB(envConf *config.Config) (*gorm.DB, error) {
@@ -36,21 +43,54 @@ func ConnectDB(envConf *config.Config) (*gorm.DB, error) {
 		},
 	}
 
-	db, err := gorm.Open(postgres.Open(connectionString), gormConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	// Retry loop — контейнер может стартовать до готовности DB
+	var db *gorm.DB
+	var err error
+	delay := baseDelay
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		db, err = gorm.Open(postgres.Open(connectionString), gormConfig)
+		if err == nil {
+			sqlDB, sqlErr := db.DB()
+			if sqlErr == nil {
+				if pingErr := sqlDB.Ping(); pingErr == nil {
+					break // успешное подключение
+				} else {
+					err = pingErr
+				}
+			} else {
+				err = sqlErr
+			}
+		}
+
+		if attempt == maxRetries {
+			return nil, fmt.Errorf("failed to connect to database after %d attempts: %w", maxRetries, err)
+		}
+
+		log.Warn().
+			Err(err).
+			Int("attempt", attempt).
+			Int("max_attempts", maxRetries).
+			Dur("retry_in", delay).
+			Msg("database connection failed, retrying...")
+
+		time.Sleep(delay)
+		delay *= 2
+		if delay > maxDelay {
+			delay = maxDelay
+		}
+	}
+
+	if db == nil {
+		return nil, fmt.Errorf("database connection is nil after retry loop")
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get sql.DB from gorm DB: %w", err)
+		return nil, fmt.Errorf("failed to get sql.DB: %w", err)
 	}
 
-	if err := sqlDB.Ping(); err != nil {
-		return nil, fmt.Errorf("failed to ping database: %w", err)
-	}
-
-	// Настройка connection pool для production
+	// Настройка connection pool
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetConnMaxLifetime(time.Hour)

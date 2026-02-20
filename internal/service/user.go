@@ -82,7 +82,7 @@ func (s *Service) GetReviewerAssignments(outerCtx context.Context, userID string
 		Str("user_id", userID).
 		Msg("fetching PRs reviewed by user")
 
-	err := s.txmgr.Do(outerCtx, func(ctx context.Context, tx storage.Tx) error {
+	err := s.txmgr.DoRead(outerCtx, func(ctx context.Context, tx storage.Tx) error {
 		result, err := tx.PullRequestRepo().GetPRsReviewedByUser(ctx, userID)
 		if err != nil {
 			return err
@@ -107,7 +107,7 @@ func (s *Service) GetReviewerAssignments(outerCtx context.Context, userID string
 	return prs, nil
 }
 
-// DeactivateTeamMembers массово деактивирует всех участников команды
+// DeactivateTeamMembers массово деактивирует указанных участников команды и переназначает их ревью
 func (s *Service) DeactivateTeamMembers(outerCtx context.Context, input *domain.DeactivateTeamInput) (*domain.DeactivateTeamResult, error) {
 	const op = "service.DeactivateTeamMembers"
 	requestID := logger.GetRequestID(outerCtx)
@@ -122,7 +122,8 @@ func (s *Service) DeactivateTeamMembers(outerCtx context.Context, input *domain.
 		Str("request_id", requestID).
 		Str("layer", "service").
 		Str("team_name", input.TeamName).
-		Msg("deactivating all team members")
+		Any("user_ids", input.UserIDs).
+		Msg("deactivating team members")
 
 	err := s.txmgr.Do(outerCtx, func(ctx context.Context, tx storage.Tx) error {
 		// Проверяем существование команды
@@ -131,15 +132,135 @@ func (s *Service) DeactivateTeamMembers(outerCtx context.Context, input *domain.
 			return err
 		}
 
-		// Деактивируем всех участников команды одним batch update
-		deactivatedCount, err := tx.TeamRepo().DeactivateAllMembers(ctx, input.TeamName)
+		// Деактивируем участников команды
+		var deactivatedCount int
+		if len(input.UserIDs) > 0 {
+			// Деактивируем только указанных пользователей
+			deactivatedCount, err = tx.TeamRepo().DeactivateMembers(ctx, input.TeamName, input.UserIDs)
+		} else {
+			// Если user_ids пустой — деактивируем всех
+			deactivatedCount, err = tx.TeamRepo().DeactivateAllMembers(ctx, input.TeamName)
+		}
 		if err != nil {
 			return err
+		}
+
+		// Находим все открытые PR, где деактивированные пользователи являются ревьюверами
+		userIDsToReassign := input.UserIDs
+		if len(userIDsToReassign) == 0 {
+			// Если деактивировали всех — получаем список всех участников команды
+			team, err := tx.TeamRepo().GetByName(ctx, input.TeamName)
+			if err != nil {
+				return err
+			}
+			for _, member := range team.Members {
+				userIDsToReassign = append(userIDsToReassign, member.UserID)
+			}
+		}
+
+		openPRIDs, err := tx.PullRequestRepo().GetOpenPRsByReviewers(ctx, userIDsToReassign)
+		if err != nil {
+			return err
+		}
+
+		// Переназначаем неактивных ревьюверов на каждом затронутом PR
+		reassignedCount := 0
+		for _, prID := range openPRIDs {
+			pr, err := tx.PullRequestRepo().GetByID(ctx, prID)
+			if err != nil {
+				return err
+			}
+
+			// Получаем список неактивных ревьюверов на этом PR
+			inactiveReviewers, err := tx.PullRequestRepo().GetInactiveReviewers(ctx, prID)
+			if err != nil {
+				return err
+			}
+
+			for _, oldReviewerID := range inactiveReviewers {
+				// Получаем активных членов команды заменяемого ревьювера
+				activeUsers, err := tx.UserRepo().GetActiveTeamMembers(ctx, oldReviewerID)
+				if err != nil {
+					return err
+				}
+
+				// Формируем список кандидатов, исключая автора PR и текущих ревьюверов
+				excludeMap := make(map[string]bool)
+				excludeMap[pr.AuthorID] = true
+				for _, r := range pr.AssignedReviewers {
+					excludeMap[r] = true
+				}
+
+				candidates := make([]domain.User, 0)
+				for _, user := range activeUsers {
+					if !excludeMap[user.UserID] {
+						candidates = append(candidates, user)
+					}
+				}
+
+				if len(candidates) == 0 {
+					// Нет кандидатов — просто удаляем ревьювера
+					if err := tx.PullRequestRepo().UnassignReviewer(ctx, prID, oldReviewerID); err != nil {
+						return err
+					}
+					// Обновляем список в памяти
+					newReviewers := make([]string, 0, len(pr.AssignedReviewers)-1)
+					for _, r := range pr.AssignedReviewers {
+						if r != oldReviewerID {
+							newReviewers = append(newReviewers, r)
+						}
+					}
+					pr.AssignedReviewers = newReviewers
+					reassignedCount++
+
+					log.Info().
+						Str("request_id", requestID).
+						Str("pull_request_id", prID).
+						Str("old_reviewer_id", oldReviewerID).
+						Msg("removed inactive reviewer during team deactivation (no candidates)")
+					continue
+				}
+
+				// Случайно выбираем нового ревьювера
+				index, err := secureRandomInt(len(candidates))
+				if err != nil {
+					return err
+				}
+				newReviewer := candidates[index].UserID
+
+				// Удаляем старого и назначаем нового
+				if err := tx.PullRequestRepo().UnassignReviewer(ctx, prID, oldReviewerID); err != nil {
+					return err
+				}
+				if err := tx.PullRequestRepo().AssignReviewer(ctx, prID, newReviewer); err != nil {
+					return err
+				}
+
+				// Обновляем список в памяти
+				newReviewers := make([]string, 0, len(pr.AssignedReviewers))
+				for _, r := range pr.AssignedReviewers {
+					if r == oldReviewerID {
+						newReviewers = append(newReviewers, newReviewer)
+					} else {
+						newReviewers = append(newReviewers, r)
+					}
+				}
+				pr.AssignedReviewers = newReviewers
+				reassignedCount++
+
+				log.Info().
+					Str("request_id", requestID).
+					Str("pull_request_id", prID).
+					Str("old_reviewer_id", oldReviewerID).
+					Str("new_reviewer_id", newReviewer).
+					Msg("reassigned reviewer during team deactivation")
+			}
 		}
 
 		result = &domain.DeactivateTeamResult{
 			TeamName:             input.TeamName,
 			DeactivatedUserCount: deactivatedCount,
+			ReassignedCount:      reassignedCount,
 		}
 
 		return nil
@@ -157,7 +278,8 @@ func (s *Service) DeactivateTeamMembers(outerCtx context.Context, input *domain.
 		Str("layer", "service").
 		Str("team_name", result.TeamName).
 		Int("deactivated_count", result.DeactivatedUserCount).
-		Msg("successfully deactivated all team members")
+		Int("reassigned_count", result.ReassignedCount).
+		Msg("successfully deactivated team members and reassigned reviews")
 
 	return result, nil
 }

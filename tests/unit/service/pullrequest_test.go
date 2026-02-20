@@ -15,6 +15,7 @@ import (
 )
 
 func TestCreatePullRequest_Success(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
@@ -82,6 +83,7 @@ func TestCreatePullRequest_Success(t *testing.T) {
 }
 
 func TestCreatePullRequest_NoActiveMembers(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
@@ -129,6 +131,7 @@ func TestCreatePullRequest_NoActiveMembers(t *testing.T) {
 }
 
 func TestCreatePullRequest_AlreadyExists(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
@@ -171,6 +174,7 @@ func TestCreatePullRequest_AlreadyExists(t *testing.T) {
 }
 
 func TestMergePullRequest_Success(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
@@ -218,6 +222,7 @@ func TestMergePullRequest_Success(t *testing.T) {
 }
 
 func TestMergePullRequest_Idempotent(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)
@@ -260,6 +265,7 @@ func TestMergePullRequest_Idempotent(t *testing.T) {
 }
 
 func TestReassignPullRequest_AfterMerge_ShouldFail(t *testing.T) {
+	t.Parallel()
 	// Arrange
 	mockTxMgr := mocks.NewTxManager(t)
 	mockTx := mocks.NewTx(t)

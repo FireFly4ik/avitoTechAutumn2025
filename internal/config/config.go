@@ -40,6 +40,39 @@ func NewEnvConfig() *Config {
 	}
 }
 
+// Validate проверяет обязательные параметры конфигурации.
+// Возвращает ошибку если хотя бы один обязательный параметр не задан.
+func (c *Config) Validate() error {
+	var missing []string
+
+	check := func(name, value string) {
+		if strings.TrimSpace(value) == "" {
+			missing = append(missing, name)
+		}
+	}
+
+	check("APP_PORT", c.Port)
+	check("DB_HOST", c.Database.Host)
+	check("DB_PORT", c.Database.Port)
+	check("DB_USER", c.Database.User)
+	check("DB_PASSWORD", c.Database.Password)
+	check("DB_NAME", c.Database.Name)
+
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required env variables: %s", strings.Join(missing, ", "))
+	}
+
+	// Defaults
+	if c.Database.SSLMode == "" {
+		c.Database.SSLMode = "disable"
+	}
+	if c.ProductionType == "" {
+		c.ProductionType = "debug"
+	}
+
+	return nil
+}
+
 func (config *Config) PrintConfigWithHiddenSecrets() {
 	// Функция для маскировки секретов
 	mask := func(s string) string {

@@ -1,11 +1,11 @@
 package handlers
 
 import (
-	"avitoTechAutumn2025/internal/api"
 	"avitoTechAutumn2025/internal/api/middleware"
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
-	"net/http"
 )
 
 // SetIsActive обрабатывает изменение статуса активности пользователя
@@ -16,18 +16,8 @@ func (h *Handler) SetIsActive(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Error().
-			Err(err).
-			Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).
-			Str("layer", "handler").
-			Msg("failed to parse request")
-
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Error: api.Error{
-				Code:    api.ErrCodeInvalidRequest,
-				Message: "Failed to parse request: " + err.Error(),
-			},
-		})
+		log.Error().Err(err).Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).Str("layer", "handler").Msg("failed to parse request")
+		handleValidationError(c, "Failed to parse request: "+err.Error())
 		return
 	}
 
@@ -58,17 +48,8 @@ func (h *Handler) SetIsActive(c *gin.Context) {
 func (h *Handler) GetReview(c *gin.Context) {
 	userId := c.Query("user_id")
 	if userId == "" {
-		log.Warn().
-			Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).
-			Str("layer", "handler").
-			Msg("missing user_id parameter")
-
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Error: api.Error{
-				Code:    api.ErrCodeInvalidRequest,
-				Message: "user_id parameter is required",
-			},
-		})
+		log.Warn().Str("request_id", c.MustGet(middleware.RequestIDKey).(string)).Str("layer", "handler").Msg("missing user_id parameter")
+		handleValidationError(c, "user_id parameter is required")
 		return
 	}
 
@@ -84,7 +65,7 @@ func (h *Handler) GetReview(c *gin.Context) {
 		return
 	}
 
-	prList := make([]map[string]interface{}, len(prs))
+	prList := make([]PullRequestShortResponse, len(prs))
 	for i, pr := range prs {
 		prList[i] = mapPullRequestShortToAPI(pr)
 	}

@@ -2,54 +2,113 @@ package handlers
 
 import (
 	"avitoTechAutumn2025/internal/domain"
+	"time"
 )
 
-// mapPullRequestToAPI конвертирует domain.PullRequest в API response
-func mapPullRequestToAPI(pr *domain.PullRequest) map[string]interface{} {
-	return map[string]interface{}{
-		"pull_request_id":    pr.ID,
-		"pull_request_name":  pr.Name,
-		"author_id":          pr.AuthorID,
-		"status":             string(pr.Status),
-		"assigned_reviewers": pr.AssignedReviewers,
-		"created_at":         pr.CreatedAt,
-		"merged_at":          pr.MergedAt,
+// --- Типизированные response-структуры ---
+
+// PullRequestResponse — полный ответ по PR
+type PullRequestResponse struct {
+	PullRequestID     string     `json:"pull_request_id"`
+	PullRequestName   string     `json:"pull_request_name"`
+	AuthorID          string     `json:"author_id"`
+	Status            string     `json:"status"`
+	AssignedReviewers []string   `json:"assigned_reviewers"`
+	CreatedAt         *time.Time `json:"created_at"`
+	MergedAt          *time.Time `json:"merged_at"`
+}
+
+// PullRequestShortResponse — краткий ответ по PR
+type PullRequestShortResponse struct {
+	PullRequestID   string `json:"pull_request_id"`
+	PullRequestName string `json:"pull_request_name"`
+	AuthorID        string `json:"author_id"`
+	Status          string `json:"status"`
+}
+
+// TeamResponse — ответ по команде
+type TeamResponse struct {
+	TeamName string               `json:"team_name"`
+	Members  []TeamMemberResponse `json:"members"`
+}
+
+// TeamMemberResponse — ответ по участнику команды
+type TeamMemberResponse struct {
+	UserID   string `json:"user_id"`
+	Username string `json:"username"`
+	IsActive bool   `json:"is_active"`
+}
+
+// UserResponse — ответ по пользователю
+type UserResponse struct {
+	UserID   string `json:"user_id"`
+	Username string `json:"username"`
+	TeamName string `json:"team_name"`
+	IsActive bool   `json:"is_active"`
+}
+
+// ReassignmentDetailResponse — детали переназначения ревьювера
+type ReassignmentDetailResponse struct {
+	OldReviewerID string `json:"old_reviewer_id"`
+	NewReviewerID string `json:"new_reviewer_id"`
+	WasRemoved    bool   `json:"was_removed"`
+}
+
+// --- Маппер-функции ---
+
+func mapPullRequestToAPI(pr *domain.PullRequest) PullRequestResponse {
+	return PullRequestResponse{
+		PullRequestID:     pr.ID,
+		PullRequestName:   pr.Name,
+		AuthorID:          pr.AuthorID,
+		Status:            string(pr.Status),
+		AssignedReviewers: pr.AssignedReviewers,
+		CreatedAt:         pr.CreatedAt,
+		MergedAt:          pr.MergedAt,
 	}
 }
 
-// mapPullRequestShortToAPI конвертирует domain.PullRequestShort в API response
-func mapPullRequestShortToAPI(pr domain.PullRequestShort) map[string]interface{} {
-	return map[string]interface{}{
-		"pull_request_id":   pr.ID,
-		"pull_request_name": pr.Name,
-		"author_id":         pr.AuthorID,
-		"status":            string(pr.Status),
+func mapPullRequestShortToAPI(pr domain.PullRequestShort) PullRequestShortResponse {
+	return PullRequestShortResponse{
+		PullRequestID:   pr.ID,
+		PullRequestName: pr.Name,
+		AuthorID:        pr.AuthorID,
+		Status:          string(pr.Status),
 	}
 }
 
-// mapTeamToAPI конвертирует domain.Team в API response
-func mapTeamToAPI(team *domain.Team) map[string]interface{} {
-	members := make([]map[string]interface{}, len(team.Members))
+func mapTeamToAPI(team *domain.Team) TeamResponse {
+	members := make([]TeamMemberResponse, len(team.Members))
 	for i, m := range team.Members {
-		members[i] = map[string]interface{}{
-			"user_id":   m.UserID,
-			"username":  m.Username,
-			"is_active": m.IsActive,
+		members[i] = TeamMemberResponse{
+			UserID:   m.UserID,
+			Username: m.Username,
+			IsActive: m.IsActive,
 		}
 	}
-
-	return map[string]interface{}{
-		"team_name": team.Name,
-		"members":   members,
+	return TeamResponse{
+		TeamName: team.Name,
+		Members:  members,
 	}
 }
 
-// mapUserToAPI конвертирует domain.User в API response
-func mapUserToAPI(user *domain.User) map[string]interface{} {
-	return map[string]interface{}{
-		"user_id":   user.UserID,
-		"username":  user.Username,
-		"team_name": user.TeamName,
-		"is_active": user.IsActive,
+func mapUserToAPI(user *domain.User) UserResponse {
+	return UserResponse{
+		UserID:   user.UserID,
+		Username: user.Username,
+		TeamName: user.TeamName,
+		IsActive: user.IsActive,
 	}
+}
+
+func mapReassignmentDetailsToAPI(details []domain.ReviewerReassignment) []ReassignmentDetailResponse {
+	result := make([]ReassignmentDetailResponse, len(details))
+	for i, d := range details {
+		result[i] = ReassignmentDetailResponse{
+			OldReviewerID: d.OldReviewerID,
+			NewReviewerID: d.NewReviewerID,
+			WasRemoved:    d.WasRemoved,
+		}
+	}
+	return result
 }

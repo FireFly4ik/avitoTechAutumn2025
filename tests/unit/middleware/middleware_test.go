@@ -248,3 +248,23 @@ func TestRecoveryMiddleware(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Contains(t, w.Body.String(), "internal server error")
 }
+
+func TestRecoveryMiddleware_StringPanic(t *testing.T) {
+	// Arrange
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(middleware.RecoveryMiddleware())
+
+	router.GET("/panic-string", func(c *gin.Context) {
+		panic("string panic message")
+	})
+
+	// Act
+	req := httptest.NewRequest(http.MethodGet, "/panic-string", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// Assert
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "internal server error")
+}

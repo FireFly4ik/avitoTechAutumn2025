@@ -77,7 +77,7 @@ func (s *Service) GetTeam(outerCtx context.Context, teamName string) (*domain.Te
 		Str("team_name", teamName).
 		Msg("fetching team")
 
-	err := s.txmgr.Do(outerCtx, func(ctx context.Context, tx storage.Tx) error {
+	err := s.txmgr.DoRead(outerCtx, func(ctx context.Context, tx storage.Tx) error {
 		t, err := tx.TeamRepo().GetByName(ctx, teamName)
 		if err != nil {
 			return err

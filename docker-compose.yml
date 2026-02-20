@@ -104,6 +104,20 @@ services:
     depends_on:
       - loki
 
+  swagger-ui:
+    image: swaggerapi/swagger-ui:latest
+    container_name: avito_swagger
+    networks:
+      - avito_network
+    environment:
+      - SWAGGER_JSON=/openapi.yml
+    volumes:
+      - ./openapi.yml:/openapi.yml:ro
+    ports:
+      - "8088:8080"
+    depends_on:
+      - api
+
 volumes:
   db_data:
   prometheus_data:

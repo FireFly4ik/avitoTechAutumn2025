@@ -47,6 +47,11 @@ func (h *Handler) InitRoutes() *gin.Engine {
 	// Prometheus metrics endpoint (без аутентификации для scraping)
 	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
+	// OpenAPI spec (для Swagger UI и других инструментов)
+	r.GET("/openapi.yml", func(c *gin.Context) {
+		c.File("openapi.yml")
+	})
+
 	teamGroup := r.Group(TeamPathRoute)
 	{
 		teamGroup.POST(AddTeamRoute, h.AddTeam)

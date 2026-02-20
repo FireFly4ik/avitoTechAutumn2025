@@ -17,4 +17,7 @@ var (
 const (
 	// UniqueViolation is a PostgreSQL error code for unique constraint violations.
 	UniqueViolation = "23505"
+
+	// ForeignKeyViolation is a PostgreSQL error code for foreign key constraint violations.
+	ForeignKeyViolation = "23503"
 )
